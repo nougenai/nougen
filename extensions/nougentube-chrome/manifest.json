@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "NouGenTube",
+  "version": "0.2.0",
+  "description": "YouTube transcript, local-AI summary, chat and highlights. Runs on your own Ollama — $0, private.",
+  "permissions": [
+    "storage",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "http://localhost:11434/*",
+    "http://127.0.0.1:11434/*",
+    "http://127.0.0.1:8765/*",
+    "https://integrate.api.nvidia.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ollama_origin",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}
