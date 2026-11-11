@@ -21,9 +21,9 @@ attrs==26.1.0
     #   referencing
 audioop-lts==0.2.2 ; python_full_version >= '3.13'
     # via gradio
-brotli==1.2.0
+brotli==1.2.1
     # via gradio
-certifi==2026.7.22
+certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
@@ -50,7 +50,7 @@ fastapi==0.141.1
     # via
     #   nougen-shards (pyproject.toml)
     #   gradio
-filelock==3.32.5
+filelock==4.2.10
     # via huggingface-hub
 fsspec==2026.9.0
     # via
@@ -155,7 +155,7 @@ numpy==2.5.0 ; python_full_version >= '3.12'
     #   nougen-shards (pyproject.toml)
     #   gradio
     #   pandas
-oauthlib==4.0.0
+oauthlib==4.0.1
     # via requests-oauthlib
 ollama==0.6.2
     # via nougen-shards (pyproject.toml)
@@ -183,7 +183,7 @@ protobuf==7.36.2
     #   google-api-core
     #   googleapis-common-protos
     #   proto-plus
-pyasn1==0.6.4
+pyasn1==0.6.5
     # via pyasn1-modules
 pyasn1-modules==0.4.2
     # via google-auth
