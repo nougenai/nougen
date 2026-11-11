@@ -33,3 +33,12 @@ def test_bridge_ports_settle_when_the_panel_goes_away():
         ["node", "--test", str(test_file)], capture_output=True, text=True, timeout=120, check=False
     )
     assert result.returncode == 0, result.stdout[-2500:] + result.stderr[-1500:]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_auto_theme_follows_youtube_then_the_system():
+    test_file = ROOT / "extensions" / "nougentube-chrome" / "tests" / "theme-core.test.mjs"
+    result = subprocess.run(
+        ["node", "--test", str(test_file)], capture_output=True, text=True, timeout=120, check=False
+    )
+    assert result.returncode == 0, result.stdout[-2500:] + result.stderr[-1500:]

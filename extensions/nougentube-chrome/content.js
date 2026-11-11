@@ -187,6 +187,8 @@
   .p[data-theme=hardcade]{--bg:#080711;--card:#151024;--raised:#1f1733;--ln:#3a2a5c;--lns:#8a6cc4;--tx:#f8f2ff;--mu:#b9acce;--ac:#b14cff;--ac2:#00e5ff;--ok:#b6ff3b;--warn:#ffb020;--bad:#ff5c78;--ink:#080711;--focus:#00e5ff;--r:0px;--rp:2px;--ow:2px}
   .p[data-theme=hardcade] .tabs button{text-transform:uppercase;letter-spacing:.06em;font-size:12px}
   @supports (corner-shape:squircle){.p[data-theme=arcade],.p[data-theme=arcade] :is(button,select,input,textarea,.chip,.msg,.vf,.card,.menu,.ib){corner-shape:squircle}}
+  @media (prefers-contrast:more){.p[data-theme]{--ln:var(--lns);--mu:var(--tx)}.p :is(button,select,input,textarea,.chip,.vf,.msg,.card,.menu){border-width:2px}.p :is(button,select,input,a,summary,[tabindex]):focus-visible{outline-width:3px}}
+  @media (forced-colors:active){:is(button,select,input,textarea,.chip,.vf,.msg,.card,.menu){border:1px solid ButtonText}.tabs button.on,.chip.on,button.go{outline:2px solid Highlight;outline-offset:-2px}a,.t{color:LinkText}.vok{color:Highlight}.bar::after{background:Highlight}}
   :is(button,select,input,a,summary,[tabindex]):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--ln)}
   .lg{width:26px;height:26px;border-radius:var(--r);background:linear-gradient(135deg,var(--ac),var(--ac2));display:grid;place-items:center;font-weight:800;color:var(--ink);font-size:13px}
@@ -267,6 +269,7 @@
     chrome.storage.sync.get("theme").then(v => { S.theme = v.theme || "auto"; applyTheme(); });
     chrome.storage.onChanged.addListener((ch, area) => { if (area === "sync" && ch.theme) { S.theme = ch.theme.newValue || "auto"; applyTheme(); } });
     new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["dark"] });
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);   // the system changed while the page is open
     root.getElementById("key").onclick = () => chrome.runtime.sendMessage({ type: "openOptions" });
     root.addEventListener("click", e => { const a = e.target.closest("[data-seek]"); if (a) { e.stopPropagation(); seek(+a.dataset.seek); } });
     chrome.runtime.sendMessage({ type: "models" }, r => { if (r?.ok) { S.models = r.models; S.model = r.current; S.labels = r.labels || {}; S.bridge = r.nougenopen; S.ollamaErr = r.ollamaErr; } root.getElementById("mdl").textContent = label(S.model || ""); render(); });
@@ -277,7 +280,7 @@
   const THEMES = ["auto", "dark", "light", "arcade", "hardcade"];
   const THEME_NAMES = { auto: "Auto (matches YouTube)", dark: "Mono Violet dark", light: "Mono Violet light", arcade: "Arcade", hardcade: "Hardcade" };
   function applyTheme() { const p = root && root.querySelector(".p"); if (!p) return; const t = S.theme || "auto";
-    p.dataset.theme = t === "auto" ? (document.documentElement.hasAttribute("dark") || matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : t;
+    p.dataset.theme = t === "auto" ? NGT_THEME.resolveAuto({ ytBackground: getComputedStyle(document.documentElement).getPropertyValue("--yt-spec-base-background"), ytDarkAttr: document.documentElement.hasAttribute("dark"), osDark: matchMedia("(prefers-color-scheme: dark)").matches }) : t;
     const b = root.getElementById("th"); if (b) b.title = "Theme: " + THEME_NAMES[t] + " (click to change)"; }
   function toast(text) { const n = root.getElementById("note"); if (!n) return; n.textContent = text; n.hidden = false; n.className = "note";
     clearTimeout(toast.t); toast.t = setTimeout(() => note(), 1600); }

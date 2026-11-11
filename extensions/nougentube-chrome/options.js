@@ -8,6 +8,7 @@ async function init() {
   const sync = await chrome.storage.sync.get(["host", "autoOrder", "theme"]);
   const paint = t => { document.documentElement.dataset.theme = t === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : t; };
   $("theme").value = sync.theme || "auto"; paint($("theme").value);
+  matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => { if ($("theme").value === "auto") paint("auto"); });   // follow the system while this page is open
   $("theme").onchange = () => { chrome.storage.sync.set({ theme: $("theme").value }); paint($("theme").value); };
   $("order").value = sync.autoOrder || "free";
   $("order").onchange = () => chrome.storage.sync.set({ autoOrder: $("order").value });

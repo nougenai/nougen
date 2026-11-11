@@ -60,6 +60,10 @@ The panel and the settings page use the Mono Violet colorways from the NouGenDes
 
 Arcade also uses continuous ("squircle") corners through the standard CSS `corner-shape` property, which Chrome supports from version 139; browsers without it show ordinary rounded corners. Electron's `-electron-corner-smoothing` is not used here: it only exists inside Electron and does nothing in a browser.
 
+Following Electron's nativeTheme model, "Auto" matches YouTube's own theme when the page has one (its page colour), falls back to the system setting when it has none, and re-checks live when either changes: YouTube's theme switch, or the operating system flipping between light and dark while the page is open. The settings page follows the system the same way. The logic is in `theme-core.js` with `tests/theme-core.test.mjs`.
+
+Accessibility follows the system too. With high contrast on (`prefers-contrast: more`) borders switch to the strong border colour and secondary text to full strength; in Windows forced-colors mode every control gets a visible system-colour border and the selected tab or action a highlight outline.
+
 ## Icons
 `icons/` holds the extension icon at 16, 32, 48 and 128 px: the same "N" on the Mono Violet gradient as the panel badge, drawn on a superellipse so it matches the Arcade corners. `python icons/make_icons.py` redraws them (needs Pillow). Several sizes are supplied for the same reason Electron's nativeImage takes several scale factors: each place that shows the icon picks the size it needs.
 
