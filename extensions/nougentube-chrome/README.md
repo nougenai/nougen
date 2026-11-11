@@ -58,6 +58,11 @@ The Morph tab reverses a video's intent: it asks what the video lets you build, 
 ## Themes
 The panel and the settings page use the Mono Violet colorways from the NouGenDesigns package (`designs/mono-violet/tokens.css`): Mono Violet dark, Mono Violet light, Arcade and Hardcade. "Auto" (the default) picks dark or light to match YouTube. Change it with ◐ in the panel header or on the settings page.
 
+Arcade also uses continuous ("squircle") corners through the standard CSS `corner-shape` property, which Chrome supports from version 139; browsers without it show ordinary rounded corners. Electron's `-electron-corner-smoothing` is not used here: it only exists inside Electron and does nothing in a browser.
+
+## Icons
+`icons/` holds the extension icon at 16, 32, 48 and 128 px: the same "N" on the Mono Violet gradient as the panel badge, drawn on a superellipse so it matches the Arcade corners. `python icons/make_icons.py` redraws them (needs Pillow). Several sizes are supplied for the same reason Electron's nativeImage takes several scale factors: each place that shows the icon picks the size it needs.
+
 ## Model routes and your own keys
 Open ⚙ in the panel header for the settings page.
 - **Provider keys.** Claude (Anthropic), OpenAI, Google Gemini, DeepSeek, OpenRouter, NVIDIA build, or any OpenAI-compatible endpoint. Paste a key and press "Test key and load models": the key is checked against the provider and the model list comes from the provider itself, so no model name is guessed. Keys are stored in this browser only (`chrome.storage.local`) and sent only to that provider.

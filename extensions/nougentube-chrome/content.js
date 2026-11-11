@@ -186,6 +186,7 @@
   .p[data-theme=arcade]{--bg:#17102a;--card:#261a44;--raised:#33245a;--ln:#4a3777;--lns:#9a82cc;--tx:#fff3fe;--mu:#cbbbe3;--ac:#c47dff;--ac2:#ff7ac0;--ok:#5cf2b6;--warn:#ffd166;--bad:#ff7d98;--ink:#17102a;--focus:#ffe066;--r:12px;--rp:16px;--ow:1px}
   .p[data-theme=hardcade]{--bg:#080711;--card:#151024;--raised:#1f1733;--ln:#3a2a5c;--lns:#8a6cc4;--tx:#f8f2ff;--mu:#b9acce;--ac:#b14cff;--ac2:#00e5ff;--ok:#b6ff3b;--warn:#ffb020;--bad:#ff5c78;--ink:#080711;--focus:#00e5ff;--r:0px;--rp:2px;--ow:2px}
   .p[data-theme=hardcade] .tabs button{text-transform:uppercase;letter-spacing:.06em;font-size:12px}
+  @supports (corner-shape:squircle){.p[data-theme=arcade],.p[data-theme=arcade] :is(button,select,input,textarea,.chip,.msg,.vf,.card,.menu,.ib){corner-shape:squircle}}
   :is(button,select,input,a,summary,[tabindex]):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--ln)}
   .lg{width:26px;height:26px;border-radius:var(--r);background:linear-gradient(135deg,var(--ac),var(--ac2));display:grid;place-items:center;font-weight:800;color:var(--ink);font-size:13px}
