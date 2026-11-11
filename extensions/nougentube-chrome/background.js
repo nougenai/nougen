@@ -140,49 +140,33 @@ async function autoRoutes(c) {
 }
 
 chrome.runtime.onConnect.addListener(port => {
-  if (port.name === "map") {
+  // Request/response ports to the bridge. As in Electron's MessagePorts model, a closed port is a signal to settle:
+  // when the panel goes away (closed, or navigated to another video) the request is aborted and nothing is posted back.
+  const BRIDGE = {
+    map: { path: () => "map", timeout: 0, body: m => ({ prompts: m.prompts, system: m.system, max_tokens: 1500 }), ok: j => ({ ok: true, results: j.results }) },
+    recall: { path: () => "recall", timeout: 0, body: m => m.body, ok: j => ({ ok: true, shards: j.shards || [], failed: j.failed || [] }) },
+    tube: { path: m => (m.kind === "playlist" ? "playlist" : "transcript"), timeout: 0, timeoutOf: m => (m.kind === "playlist" ? 120000 : 1500000), body: m => m.body, ok: j => ({ ...j, ok: true }) },
+    web: { path: () => "web", timeout: 110000, body: m => m.body, ok: j => ({ ok: true, results: j.results || [], providers: j.providers || [], failed: j.failed || [] }) },
+    shard: { path: () => "shard", timeout: 0, body: m => m.doc, ok: j => ({ ok: !!j.ok, parts: j.parts || [] }) },
+  };
+  const bridge = BRIDGE[port.name];
+  if (bridge) {
+    let closed = false, ctrl = null;
+    port.onDisconnect.addListener(() => { closed = true; if (ctrl) ctrl.abort(); });
+    const send = m => { if (!closed) try { port.postMessage(m); } catch {} };
     port.onMessage.addListener(async msg => {
       if (msg.ping) return;   // keepalive: each message resets the service worker idle timer
-      try { const r = await fetch(NGO + "/v1/nougen/map", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompts: msg.prompts, system: msg.system, max_tokens: 1500 }) });
-        const j = await r.json(); port.postMessage(r.ok ? { ok: true, results: j.results } : { ok: false, error: j.error?.message || String(r.status) });
-      } catch (e) { port.postMessage({ ok: false, error: String(e) }); }
-    });
-    return;
-  }
-  if (port.name === "recall") {
-    port.onMessage.addListener(async msg => {
-      if (msg.ping) return;
-      try { const r = await fetch(NGO + "/v1/nougen/recall", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body) });
-        const j = await r.json(); port.postMessage(r.ok ? { ok: true, shards: j.shards || [], failed: j.failed || [] } : { ok: false, error: j.error?.message || ("bridge said " + r.status) });
-      } catch { port.postMessage({ ok: false, error: "the NouGenOpen bridge is not running (nougen-open serve)" }); }
-    });
-    return;
-  }
-  if (port.name === "tube") {
-    port.onMessage.addListener(async msg => {
-      if (msg.ping) return;
-      const kind = msg.kind === "playlist" ? "playlist" : "transcript";
-      try { const r = await fetch(NGO + "/v1/nougen/" + kind, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body), signal: AbortSignal.timeout(kind === "playlist" ? 120000 : 1500000) });
-        const j = await r.json(); port.postMessage(r.ok ? { ...j, ok: true } : { ok: false, error: j.error?.message || ("bridge said " + r.status), code: r.status });
-      } catch (e) { port.postMessage({ ok: false, error: e && e.name === "TimeoutError" ? "the bridge took too long" : "the NouGenOpen bridge is not running (nougen-open serve)" }); }
-    });
-    return;
-  }
-  if (port.name === "web") {
-    port.onMessage.addListener(async msg => {
-      if (msg.ping) return;
-      try { const r = await fetch(NGO + "/v1/nougen/web", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body), signal: AbortSignal.timeout(110000) });
-        const j = await r.json(); port.postMessage(r.ok ? { ok: true, results: j.results || [], providers: j.providers || [], failed: j.failed || [] } : { ok: false, error: j.error?.message || ("bridge said " + r.status) });
-      } catch { port.postMessage({ ok: false, error: "the NouGenOpen bridge is not running (nougen-open serve)" }); }
-    });
-    return;
-  }
-  if (port.name === "shard") {
-    port.onMessage.addListener(async msg => {
-      if (msg.ping) return;
-      try { const r = await fetch(NGO + "/v1/nougen/shard", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.doc) });
-        const j = await r.json(); port.postMessage(r.ok ? { ok: !!j.ok, parts: j.parts || [] } : { ok: false, error: j.error?.message || ("bridge said " + r.status) });
-      } catch { port.postMessage({ ok: false, error: "the NouGenOpen bridge is not running (nougen-open serve)" }); }
+      const c = ctrl = new AbortController(), ms = bridge.timeoutOf ? bridge.timeoutOf(msg) : bridge.timeout;
+      let timedOut = false;
+      const timer = ms ? setTimeout(() => { timedOut = true; c.abort(); }, ms) : null;
+      try {
+        const r = await fetch(NGO + "/v1/nougen/" + bridge.path(msg), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(bridge.body(msg)), signal: c.signal });
+        const j = await r.json();
+        send(r.ok ? bridge.ok(j) : { ok: false, error: j.error?.message || ("bridge said " + r.status), code: r.status });
+      } catch (e) {
+        if (closed) return;
+        send({ ok: false, error: timedOut ? "the bridge took too long" : "the NouGenOpen bridge is not running (nougen-open serve)" });
+      } finally { clearTimeout(timer); }
     });
     return;
   }
