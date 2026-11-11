@@ -51,7 +51,18 @@
     for (let i = 0; i < 60 && !(segs = document.querySelectorAll("ytd-transcript-segment-renderer")).length; i++) await wait(250);
     const out = [...segs].map(s => ({ t: parseTs((s.querySelector(".segment-timestamp")?.textContent || "0").trim()),
       text: (s.querySelector(".segment-text")?.textContent || "").replace(/\s+/g, " ").trim() })).filter(l => l.text);
-    if (!wasOpen) { panel()?.querySelector("#visibility-button button")?.click(); await wait(300); style.remove(); }
+    if (!wasOpen) {
+      // Close YouTube's transcript panel again. The hiding style stays until it really is closed,
+      // otherwise the raw segment list leaks into the sidebar under our panel.
+      // YouTube's newer panel keeps rendering even after it reports HIDDEN, so the panel stays
+      // display:none until the viewer opens YouTube's own transcript with a real click.
+      panel()?.querySelector("#visibility-button button, button[aria-label*='lose' i]")?.click();
+      style.textContent = "ytd-engagement-panel-section-list-renderer[target-id*=transcript]{display:none!important}";
+      const release = e => { if (e.isTrusted && e.target.closest?.("ytd-video-description-transcript-section-renderer, [target-id*=transcript]")) {
+        style.remove(); document.removeEventListener("click", release, true); } };
+      document.addEventListener("click", release, true);
+      document.addEventListener("yt-navigate-start", () => { style.remove(); document.removeEventListener("click", release, true); }, { once: true });
+    }
     return out.length ? { lines: out, lang: "YouTube" } : null;
   }
   // merge tiny caption events into readable ~20s paragraphs
