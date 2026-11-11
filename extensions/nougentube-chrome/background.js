@@ -14,6 +14,12 @@ chrome.runtime.onMessage.addListener((msg, _s, reply) => {
     });
     return true;
   }
+  if (msg.type === "shard") {
+    fetch(NGO + "/v1/nougen/shard", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.doc) })
+      .then(async r => { const j = await r.json(); reply(r.ok ? { ok: !!j.ok, parts: j.parts || [] } : { ok: false, error: j.error?.message || ("bridge said " + r.status) }); })
+      .catch(() => reply({ ok: false, error: "the NouGenOpen bridge is not running (nougen-open serve)" }));
+    return true;
+  }
   if (msg.type === "map") {
     fetch(NGO + "/v1/nougen/map", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompts: msg.prompts, system: msg.system, max_tokens: 1200 }) })
       .then(r => r.json()).then(j => reply({ ok: true, results: j.results })).catch(e => reply({ ok: false, error: String(e) }));
@@ -40,7 +46,8 @@ chrome.runtime.onConnect.addListener(port => {
   if (port.name !== "chat") return;
   let ctrl;
   port.onDisconnect.addListener(() => { port._closed = true; ctrl && ctrl.abort(); });
-  port.onMessage.addListener(async ({ messages }) => {
+  port.onMessage.addListener(async ({ messages, ping }) => {
+    if (ping) return;   // keepalive only
     const c = await cfg(); ctrl = new AbortController(); const signal = ctrl.signal;
     try {
       if (c.model.startsWith("nougenopen:")) {

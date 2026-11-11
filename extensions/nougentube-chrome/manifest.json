@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NouGenTube",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "YouTube transcript, local-AI summary, chat and highlights. Runs on your own Ollama — $0, private.",
   "permissions": [
     "storage",

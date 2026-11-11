@@ -33,6 +33,13 @@ Ideas adopted from open-source summarizers:
 - Map-reduce: bskrishna2006 (Apache-2.0).
 - Tube-Brief has no license, so nothing was copied from it.
 
+## Intelligence report, checker and shards
+- **Intelligence report** (the default summary style) follows the Media Intelligence Architect format: Executive Summary, Key Insights & Technical Milestones, Strategic Action Items, Quality Control / Fact-Check, Notable Quotes.
+- **Full Transcript Archive.** "Copy report + transcript" puts the report first and the complete transcript second. The extension builds the archive from the transcript itself, so it is always complete and word for word, and the model spends no tokens repeating it.
+- **Checked against the transcript.** After every summary the extension checks, in code, that each quoted passage appears in the transcript word for word and that every timestamp is inside the video. Anything that fails is listed. This checks wording and times only, not whether the speaker is right.
+- **Shard.** The header button saves the video to NouGenShards through the local bridge (`POST /v1/nougen/shard`): the full transcript, plus the report and the check results if a summary exists. Tags: `nougentube`, `tube-report:<video id>`.
+- **Copy prompt + transcript for another AI** copies the Architect instructions with the transcript, for pasting into Gemini, ChatGPT or Claude.
+
 ## Transcript failsafes
 The transcript comes from several independent sources, tried in order, and the whole ladder runs up to 3 times before any error shows:
 1. **Saved copy.** The 40 most recent transcripts are kept in the browser, so a revisit loads at once. The "saved ↻" chip fetches it from YouTube again.

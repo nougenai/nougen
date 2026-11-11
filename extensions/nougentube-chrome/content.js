@@ -49,7 +49,14 @@
   const SEGS = "ytd-transcript-segment-renderer, transcript-segment-view-model";
   const BTN = "ytd-video-description-transcript-section-renderer button";
   let lastFirst = "";   // first row of the previous video, so a stale list is never read as the new one
-  const readRows = () => [...document.querySelectorAll(SEGS)].map(s => {
+  // Some pages hold BOTH layouts at once. Reading both doubled the transcript, so use one:
+  // whichever has more rows.
+  const oneLayout = () => { const a = document.querySelectorAll("ytd-transcript-segment-renderer"), b = document.querySelectorAll("transcript-segment-view-model");
+    return [...(a.length >= b.length ? a : b)]; };
+  // Transcript times only move forward. If they jump back by more than a minute, what follows
+  // is a second copy (older saved transcripts can contain one): keep the first.
+  const monotonic = lines => { for (let i = 1; i < lines.length; i++) if (lines[i].t < lines[i - 1].t - 60) return lines.slice(0, i); return lines; };
+  const readRows = () => oneLayout().map(s => {
     const [ts, tx] = s.tagName === "YTD-TRANSCRIPT-SEGMENT-RENDERER"
       ? [s.querySelector(".segment-timestamp")?.textContent, s.querySelector(".segment-text")?.textContent]
       : [s.querySelector(".ytwTranscriptSegmentViewModelTimestamp")?.textContent, s.querySelector(".ytAttributedStringHost, span")?.textContent];
@@ -223,6 +230,12 @@
   @keyframes ngt-bo{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
   .tail{padding:2px 14px 10px}
   @media (prefers-reduced-motion:reduce){.bar::after,.spin,.skel,.dots span{animation:none}}
+  .note{padding:7px 12px;font-size:12.5px;border-bottom:1px solid var(--ln);color:#34d399}.note.bad{color:#fbbf24}.note[hidden]{display:none}
+  .hd .chip{font:inherit;font-size:12px;color:var(--tx)}
+  .acts{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px 2px}
+  .vf{margin:6px 12px 12px;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;background:var(--card);font-size:12.5px}
+  .vh{font-weight:700;margin-bottom:6px}.vr{display:flex;gap:8px;padding:2px 0}.vok{color:#34d399;font-weight:700}.vno{color:#fbbf24;font-weight:700}
+  .md table{border-collapse:collapse;margin:6px 0;font-size:12.5px}.md td,.md th{border:1px solid var(--ln);padding:4px 6px;text-align:left}
   .msg{margin:8px 12px;padding:8px 12px;border-radius:10px;background:var(--card)}.msg.u{background:color-mix(in srgb,var(--ac) 20%,transparent);margin-left:40px}
   .ft{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--ln)}.ft input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:7px 10px}
   .err{color:#f87171}`;
@@ -234,15 +247,16 @@
     root = host.attachShadow({ mode: "open" });
     root.innerHTML = `<style>${CSS}</style><div class="p">
       <div class="hd"><div class="lg">N</div><div class="ti">NouGenTube<small id="mdl"></small></div>
-        <button class="ib" id="key" title="NVIDIA API key">⚙</button><button class="ib" id="cp" title="Copy transcript">⧉</button><button class="ib" id="dl" title="Export">⤓</button><div class="menu" id="menu" hidden><button data-x="md">Markdown (everything)</button><button data-x="txt">Transcript .txt</button><button data-x="srt">Subtitles .srt</button></div>
+        <button class="chip" id="hs" title="Save this video to NouGenShards: the full transcript, plus the summary if you have made one">Shard</button><button class="ib" id="key" title="NVIDIA API key">⚙</button><button class="ib" id="cp" title="Copy transcript">⧉</button><button class="ib" id="dl" title="Export">⤓</button><div class="menu" id="menu" hidden><button data-x="md">Markdown (everything)</button><button data-x="txt">Transcript .txt</button><button data-x="srt">Subtitles .srt</button></div>
         <button class="ib" id="col" title="Collapse">▾</button></div>
-      <div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button></div>
+      <div class="note" id="note" hidden></div><div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button></div>
       <div class="tb" id="tb"></div><div class="bd" id="bd"></div><div id="ft"></div></div></div>`;
     root.querySelector(".tabs").onclick = e => { const t = e.target.dataset.t; if (t) { S.tab = t; render(); } };
     root.getElementById("col").onclick = () => { const w = root.getElementById("wrap"); w.hidden = !w.hidden; root.querySelector(".p").style.height = w.hidden ? "auto" : ""; };
     root.getElementById("cp").onclick = () => navigator.clipboard.writeText(copyText()).then(() => { const b = root.getElementById("cp"); b.textContent = "✓"; setTimeout(() => b.textContent = "⧉", 1200); });
     root.getElementById("dl").onclick = e => { e.stopPropagation(); const m = root.getElementById("menu"); m.hidden = !m.hidden; };
     root.getElementById("menu").onclick = e => { const x = e.target.dataset.x; if (x) { root.getElementById("menu").hidden = true; download(x); } };
+    root.getElementById("hs").onclick = () => shardIt("hs");
     root.getElementById("key").onclick = () => { const k = prompt("NVIDIA API key (nvapi-…) from build.nvidia.com — stored only in this browser. Leave empty to remove."); if (k === null) return;
       if (k.trim()) chrome.storage.local.set({ nvKey: k.trim() }); else chrome.storage.local.remove("nvKey"); S.nvKey = !!k.trim(); render(); };
     root.addEventListener("click", e => { const a = e.target.closest("[data-seek]"); if (a) { e.stopPropagation(); seek(+a.dataset.seek); } });
@@ -313,12 +327,21 @@
         <select id="len" title="Length"><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select>
         <select id="lng" title="Output language">${LANGS.map(l => `<option>${l}</option>`).join("")}</select>
         <button class="go" id="gen">${S.summary ? "Regenerate" : "Summarize"}</button>
-        ${(S.sty || "brief") === "custom" ? `<input id="cp2" style="flex-basis:100%" placeholder="Your own prompt, e.g. Write a LinkedIn post from this video" value="${esc(S.custom || "")}">` : ""}`;
-      wirePicker(); $("sty").value = S.sty || "brief"; $("len").value = S.len || "medium"; $("lng").value = S.lng || "Auto";
+        ${(S.sty || "intel") === "custom" ? `<input id="cp2" style="flex-basis:100%" placeholder="Your own prompt, e.g. Write a LinkedIn post from this video" value="${esc(S.custom || "")}">` : ""}`;
+      wirePicker(); $("sty").value = S.sty || "intel"; $("len").value = S.len || "medium"; $("lng").value = S.lng || "Auto";
       $("sty").onchange = e => { S.sty = e.target.value; prefs(); render(); }; $("len").onchange = e => { S.len = e.target.value; prefs(); }; $("lng").onchange = e => { S.lng = e.target.value; prefs(); };
       if ($("cp2")) $("cp2").oninput = e => { S.custom = e.target.value; prefs(); };
       $("gen").onclick = summarize;
-      bd.innerHTML = S.summary ? show(S.summary) : `<div class="mu">Summaries run on your local Ollama — nothing leaves this machine. Timestamps in the result jump the video.</div>`;
+      const canShard = (S.models || []).includes("nougenopen:auto");
+      const failed = S.summary.trim().startsWith("⚠");
+      bd.innerHTML = failed ? `<div class="mu err">${esc(S.summary.trim())}</div><div class="mu">Nothing was written. Pick another model above or press Regenerate.</div>` : S.summary
+        ? `<div class="acts"><span class="chip on" id="cAll" title="Report, then the full transcript, ready to paste anywhere">Copy report + transcript</span><span class="chip" id="cRep">Copy report</span>${canShard ? `<span class="chip" id="shd" title="Save the report and the full transcript to NouGenShards">Shard it</span>` : ""}</div>` + show(S.summary) + checkCard(S.summary)
+        : `<div class="mu">Summaries run on your own models. Timestamps in the result jump the video. The Intelligence report ends with the full transcript when you copy or shard it.</div><div class="acts"><span class="chip" id="cAI" title="Copies the Media Intelligence Architect instructions plus this transcript, to paste into Gemini, ChatGPT or Claude">Copy prompt + transcript for another AI</span></div>`;
+      const flash = (id, text) => navigator.clipboard.writeText(text).then(() => { const e = $(id), o = e.textContent; e.textContent = "Copied ✓"; setTimeout(() => { if (e.isConnected) e.textContent = o; }, 1300); });
+      if ($("cAll")) $("cAll").onclick = () => flash("cAll", reportDoc());
+      if ($("cRep")) $("cRep").onclick = () => flash("cRep", S.summary);
+      if ($("cAI")) $("cAI").onclick = () => flash("cAI", ARCHITECT + "\n\n---\n\n" + copyText());
+      if ($("shd")) $("shd").onclick = shardIt;
     } else if (S.tab === "chat") {
       tb.innerHTML = modelPicker() + `<span class="chip" data-p="What are the main takeaways?">Takeaways</span><span class="chip" data-p="List every tool, product or resource mentioned, with timestamps.">Resources</span><span class="chip" data-p="What claims here might be wrong or need checking?">Fact-check</span>`;
       wirePicker(); tb.querySelectorAll("[data-p]").forEach(c => c.onclick = () => ask(c.dataset.p));
@@ -361,16 +384,31 @@
   // ---------- AI ----------
   const tx = (max = 48000) => { let s = S.paras.map(l => `[${fmt(l.t)}] ${l.text}`).join("\n"); return s.length > max ? s.slice(0, max) + "\n[…truncated]" : s; };
   const SYS = () => `You are NouGenTube, analysing the YouTube video "${vtitle()}". Ground every statement in the transcript: state only what the speaker actually says, never outside knowledge; if a point has no basis in the transcript, drop it (shorter is better than invented). Cite moments as [m:ss] or [h:mm:ss] timestamps copied from the transcript. Be concise. Markdown only.\n\nTRANSCRIPT:\n${tx()}`;
-  const STYN = { brief: "Key points", deep: "Deep dive", chapters: "Chapters", mindmap: "Mind map", steps: "Step-by-step", tldr: "TL;DR", quiz: "Quiz", custom: "Custom prompt…" };
+  const STYN = { intel: "Intelligence report", brief: "Key points", deep: "Deep dive", chapters: "Chapters", mindmap: "Mind map", steps: "Step-by-step", tldr: "TL;DR", quiz: "Quiz", custom: "Custom prompt…" };
   const LANGS = ["Auto", "English", "Español", "Français", "Kreyòl ayisyen", "Português", "Deutsch", "Italiano", "日本語", "한국어", "中文", "العربية", "हिन्दी"];
   const LEN = { short: "Keep it tight: about 120 words.", medium: "About 300 words.", long: "Thorough: up to 800 words." };
-  const STY = { chapters: "Split the whole video into 5-12 chapters in order. For each: a line \"[m:ss] **Chapter title**\" then one sentence on what it covers.",
+  // Media Intelligence Architect report. The model writes the five analysis sections only; the
+  // extension appends the full transcript archive itself, so the archive is always complete
+  // and verbatim and costs no tokens.
+  const INTEL = "Write an intelligence report with exactly these five sections, in this order, using these exact headings. No intro or outro.\n" +
+    "### Executive Summary\n2-3 dense sentences: the video's main value and core thesis.\n" +
+    "### Key Insights & Technical Milestones\nBullets, each with its [m:ss] timestamp. Cover what matters, how it works (mechanics, step-by-step logic), why it matters, and specifics: processes, tools, examples, numbers, claims, frameworks. Bold key terms. Use a table when several options or tools are compared.\n" +
+    "### Strategic Action Items\nConcrete next steps a professional could take immediately, based only on the transcript.\n" +
+    "### Quality Control / Fact-Check\nFlag unsupported or weak claims, missing proof, logical gaps, contradictions, missing context, and anything needing outside verification. Never call something verified when the transcript alone does not prove it.\n" +
+    "### Notable Quotes\n2-3 short quotes copied word for word from the transcript, in double quotes, each with its [m:ss].\n" +
+    "Do not reproduce the transcript; the full transcript archive is attached after your report automatically.";
+  const STY = { intel: INTEL, chapters: "Split the whole video into 5-12 chapters in order. For each: a line \"[m:ss] **Chapter title**\" then one sentence on what it covers.",
     mindmap: "Produce a mind map as a nested markdown bullet outline (2-space indents, max 4 levels). Root = the video topic. Branches = main themes in order, leaves = concrete details with [m:ss]. Output ONLY the outline.",
     quiz: "Write 5 multiple-choice questions testing the key ideas. Each: question, options A-D, then \"Answer: X — [m:ss]\".",
     custom: "", brief: "Give a one-line gist, then 5-8 key points as bullets, each with its timestamp.", deep: "Give a sectioned deep-dive: ### headings per topic in order, bullets under each with timestamps, then 'Recommended to watch' (the 3 most valuable moments as [m:ss] links with why), 'Notable quotes' and 'Action items'.", steps: "Extract the procedure as numbered steps with timestamps, plus prerequisites and gotchas.", tldr: "Three sentences max, plus the single most important timestamp." };
   function stream(messages, onDelta, onDone) {
-    if (S.port) S.port.disconnect(); const port = S.port = chrome.runtime.connect({ name: "chat" });
-    port.onMessage.addListener(m => { if (m.delta) onDelta(m.delta); if (m.error) onDone("\n\n⚠ " + m.error); if (m.done) onDone("", m); });
+    if (S.port) { try { S.port.disconnect(); } catch {} }
+    const port = S.port = chrome.runtime.connect({ name: "chat" }); let fin = false;
+    // Chrome stops an idle background page after ~30s even mid-request; a message every 15s keeps it up.
+    const ka = setInterval(() => { try { port.postMessage({ ping: 1 }); } catch {} }, 15000);
+    const end = (e, m) => { if (fin) return; fin = true; clearInterval(ka); onDone(e, m); };
+    port.onMessage.addListener(m => { if (m.delta) onDelta(m.delta); if (m.error) end("\n\n⚠ " + m.error); if (m.done) end("", m); });
+    port.onDisconnect.addListener(() => end("\n\n⚠ The extension's background page stopped before the answer arrived. Press Regenerate."));
     port.postMessage({ messages });
   }
   // Split on topic boundaries: a >=3s silence gap or a transition phrase, near a target size.
@@ -402,10 +440,61 @@
     return r.results.map((x, i) => `### Part ${i + 1} (${fmt(cs[i].from)}-${fmt(cs[i].to)})\n${x.ok ? x.content : "(chunk failed: " + x.error + ")"}`).join("\n\n");
   }
 
+  // ---- Checker pass. A second look at the model's work, done by code so it cannot be talked
+  // round: every quoted passage must appear in the transcript, every timestamp must be real.
+  const norm = s => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  function check(text) {
+    const hay = norm(S.lines.map(l => l.text).join(" ")), end = (S.lines[S.lines.length - 1]?.t || 0) + 30;
+    const quotes = [...text.matchAll(/["“]([^"”\n]{15,400})["”]/g)].map(m => m[1].trim());
+    const q = quotes.map(x => ({ x, ok: hay.includes(norm(x)) }));
+    const ts = [...text.replace(/\n\n— .+$/, "").matchAll(/\b(\d{1,2}:\d{2}(?::\d{2})?)\b/g)].map(m => m[1]);
+    return { q, ts: ts.length, bad: ts.filter(t => parseTs(t) > end) };
+  }
+  function checkCard(text) {
+    const c = check(text), okQ = c.q.filter(x => x.ok).length, missed = c.q.filter(x => !x.ok);
+    const row = (ok, t) => `<div class="vr"><span class="${ok ? "vok" : "vno"}">${ok ? "✓" : "!"}</span><span>${t}</span></div>`;
+    return `<div class="vf"><div class="vh">Checked against the transcript</div>` +
+      (c.q.length ? row(!missed.length, `${okQ} of ${c.q.length} quoted passages appear word for word`) : row(true, "No quoted passages to check")) +
+      missed.map(m => row(false, `Not in the transcript as written: “${esc(m.x.slice(0, 110))}${m.x.length > 110 ? "…" : ""}”`)).join("") +
+      row(!c.bad.length, c.bad.length ? `${c.bad.length} of ${c.ts} timestamps fall outside the video: ${esc(c.bad.join(", "))}` : `${c.ts} timestamps cited, all inside the video`) +
+      `<div class="mu" style="padding:6px 0 0">This checks wording and times only. Whether the speaker's claims are true still needs outside sources.</div></div>`;
+  }
+  function checkText(text) {
+    const c = check(text), missed = c.q.filter(x => !x.ok);
+    return `### Automatic check against the transcript\n- Quoted passages found word for word: ${c.q.length - missed.length} of ${c.q.length}\n` +
+      missed.map(m => `- NOT found as written: "${m.x}"\n`).join("") +
+      `- Timestamps cited: ${c.ts}; outside the video: ${c.bad.length ? c.bad.join(", ") : "none"}\n`;
+  }
+  // Report first, full transcript archive second. The archive is built here from the
+  // transcript itself, never by the model, so it is always complete and word for word.
+  const reportDoc = () => `${vtitle()} - YouTube\nhttps://www.youtube.com/watch?v=${S.vid}\n\n${S.summary.trim()}\n\n${checkText(S.summary)}\n---\n\n### Full Transcript Archive\n\n` +
+    S.paras.map(l => `(${pad(l.t)}) ${l.text}`).join("\n") + "\n";
+  // For pasting into another assistant: the operator's Media Intelligence Architect instructions.
+  const ARCHITECT = "You are the Media Intelligence Architect. Analyze the FULL transcript below and include the FULL transcript in your final output. Treat the transcript as the primary source of truth. Output zero intro or outro filler; start with the first heading.\n\n" +
+    "Required output, in this exact order:\n\n### Executive Summary\n2-3 dense sentences on the video's main value and core thesis.\n\n" +
+    "### Key Insights & Technical Milestones\nBullets with timestamps. What matters, how it works, why it matters, and specifics: processes, tools, examples, numbers, claims, frameworks. Use a table when comparing options.\n\n" +
+    "### Strategic Action Items\nPractical, concrete next steps a professional could take immediately.\n\n" +
+    "### Quality Control / Fact-Check\nFlag unsupported or weak claims, missing proof, logical gaps, contradictions, missing context, and claims needing outside verification. Do not pretend something is verified if the transcript alone does not prove it.\n\n" +
+    "### Notable Quotes\n2-3 short verbatim quotes with timestamps.\n\n---\n\n### Full Transcript Archive\nThe complete transcript exactly as provided: keep timestamps, speaker names, order and wording; do not paraphrase, shorten or omit anything, including sponsor reads. " +
+    "If it does not fit in one response, end with the exact line \"Transcript continues in next part.\" and resume from that point in the next response. If only part of a transcript was provided, title the section \"### Partial Transcript Archive\". If no transcript is provided, give a troubleshooting guide for obtaining one instead of a report.";
+  function note() { const n = root.getElementById("note"); if (!n) return; n.textContent = S.shardMsg || ""; n.hidden = !S.shardMsg; n.className = "note" + (/^(Could not|Nothing)/.test(S.shardMsg || "") ? " bad" : ""); }
+  async function shardIt(id) {
+    const b = $(typeof id === "string" ? id : "shd"); if (!b || b.dataset.busy) return;
+    if (!S.lines.length) { S.shardMsg = "Nothing to save yet: the transcript has not loaded."; return note(); }
+    const label = b.textContent; b.dataset.busy = "1"; b.innerHTML = '<span class="spin"></span> Saving';
+    const has = !!S.summary.trim();
+    const r = await new Promise(res => chrome.runtime.sendMessage({ type: "shard", doc: {
+      title: `${vtitle()} — NouGenTube ${has ? (STYN[S.sty] || "summary") : "transcript"}`.slice(0, 190), content: has ? reportDoc() : copyText(),
+      tags: ["nougentube", "tube-report:" + S.vid, has ? (S.sty || "summary") : "transcript"], source_uri: "https://www.youtube.com/watch?v=" + S.vid } }, res));
+    S.shardMsg = r?.ok ? `Saved to NouGenShards: ${r.parts.length} shard${r.parts.length === 1 ? "" : "s"} (${r.parts.map(p => p.shard_id != null ? `${p.shard_id}@db${p.db_index}` : (p.captured ? "new" : "already stored")).join(", ")}).`
+      : `Could not save to NouGenShards: ${r?.error || "the local bridge did not answer"}`;
+    delete b.dataset.busy; b.textContent = label; save(); render(); note();
+  }
+
   async function summarize() {
-    S.summary = ""; S.sty = $("sty").value; S.len = $("len").value; S.lng = $("lng").value;
+    S.summary = ""; S.shardMsg = ""; S.sty = $("sty").value; S.len = $("len").value; S.lng = $("lng").value;
     if (S.sty === "custom" && !(S.custom || "").trim()) return $("cp2")?.focus();
-    const task = (S.sty === "custom" ? S.custom : STY[S.sty]) + " " + (S.sty === "mindmap" || S.sty === "chapters" ? "" : LEN[S.len]) + (S.lng !== "Auto" ? ` Write the answer in ${S.lng}.` : ""); render(); const bd = $("bd"), b = $("gen"); b.disabled = true; b.innerHTML = '<span class="spin"></span>Working'; S.sT0 = Date.now();
+    const task = (S.sty === "custom" ? S.custom : STY[S.sty]) + " " + (S.sty === "mindmap" || S.sty === "chapters" || S.sty === "intel" ? "" : LEN[S.len]) + (S.lng !== "Auto" ? ` Write the answer in ${S.lng}.` : ""); render(); const bd = $("bd"), b = $("gen"); b.disabled = true; b.innerHTML = '<span class="spin"></span>Working'; S.sT0 = Date.now();
     const m = S.model || "";
     bd.innerHTML = m.startsWith("nougenopen:") ? loader("Asking the NouGenOpen free fleet", "", S.sT0)
       : m.startsWith("nvidia:") ? loader("Waiting for NVIDIA", "The free endpoint can queue; it gives up after 90s.", S.sT0)
@@ -417,7 +506,7 @@
         sys = `You are NouGenTube, writing about the YouTube video "${vtitle()}". Below are grounded, timestamped notes covering the whole video in order. Use only these notes; keep [m:ss] timestamps. Markdown only.\n\nNOTES:\n${notes}`;
       } catch (e) { S.summary = "⚠ " + e.message; b.disabled = false; b.textContent = "Regenerate"; return render(); } }
     stream([{ role: "system", content: sys }, { role: "user", content: task }], d => { S.summary += d; if (S.tab === "summary") bd.innerHTML = show(S.summary) + WRITING; },
-      (e, fin) => { S.summary += e; if (fin) S.summary += `\n\n— ${fin.model}, ${fin.tokens} tokens, ${fin.where}${S.mapInfo ? " · map: " + S.mapInfo : ""}`; save(); render(); });
+      (e, fin) => { S.summary += e; if (fin) S.summary += `\n\n— ${fin.model}, ${fin.tokens} tokens, ${Math.round((Date.now() - S.sT0) / 1000)}s, ${fin.where}${S.mapInfo ? " · map: " + S.mapInfo : ""}`; save(); render(); });
   }
   function ask(q) {
     S.chat.push({ role: "user", content: q }, { role: "assistant", content: "" }); render(); const a = S.chat[S.chat.length - 1];
@@ -427,7 +516,7 @@
 
   // ---------- persistence / export ----------
   const key = () => "v:" + S.vid;
-  function save() { chrome.storage.local.set({ [key()]: { summary: S.summary, chat: S.chat, hl: S.hl } }); }
+  function save() { chrome.storage.local.set({ [key()]: { summary: S.summary, chat: S.chat, hl: S.hl, shardMsg: S.shardMsg || "" } }); }
   const saveHl = save;
   // Copy format: "<title> - YouTube\n<url>\n\nTranscript:\n(mm:ss) paragraph"
   const pad = t => { t = Math.floor(t); const h = t / 3600 | 0, m = String((t % 3600) / 60 | 0).padStart(2, "0"), x = String(t % 60).padStart(2, "0"); return h ? `${h}:${m}:${x}` : `${m}:${x}`; };
@@ -454,9 +543,9 @@
     if (!mount()) return setTimeout(load, 500);
     if (!alive()) return render();
     if (vid === S.vid) return;
-    Object.assign(S, { vid, lines: [], paras: [], err: null, summary: "", chat: [], hl: {}, q: "", tT0: Date.now(), tStage: "" }); render();
+    Object.assign(S, { vid, lines: [], paras: [], err: null, summary: "", chat: [], hl: {}, q: "", tT0: Date.now(), tStage: "", shardMsg: "" }); render();
     const st = (await chrome.storage.local.get(key()))[key()]; if (st) Object.assign(S, st);
-    Object.assign(S, await chrome.storage.sync.get(["sty", "len", "lng", "custom"])); render();
+    Object.assign(S, await chrome.storage.sync.get(["sty", "len", "lng", "custom"])); render(); note();
     try {
       const to = (pr, ms) => Promise.race([Promise.resolve(pr).catch(e => (console.warn("[NouGenTube]", e), null)), new Promise(r => setTimeout(() => r(null), ms))]);
       const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -486,7 +575,7 @@
         }
       }
       if (gone()) return;
-      if (r) { S.lines = r.lines; S.lang = r.lang; S.paras = paragraphs(r.lines); if (r.lang !== "saved") cachePut(vid, r); }
+      if (r) { r.lines = monotonic(r.lines); S.lines = r.lines; S.lang = r.lang; S.paras = paragraphs(r.lines); if (r.lang !== "saved") cachePut(vid, r); }
       else S.err = (info && info.vid === vid && !info.tracks.length && !document.querySelector(BTN))
         ? "This video has no captions, so there is no transcript to read."
         : "YouTube has captions for this video but didn't return them after 3 tries.";
