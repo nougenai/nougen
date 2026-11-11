@@ -18,8 +18,8 @@ Legend: **yes** = shipped, **partial** = shipped with a stated limit, **no** = n
 | Chat about the video | yes | yes | yes | Answers cite timestamps |
 | Chat across everything you saved | yes ("chat with your highlights") | no | **yes (new)** | My library: answers from saved reports in the vault, each with a verified shard citation |
 | Mind map | no | yes (editable, PNG) | partial | Interactive map in the panel; no PNG export or editing |
-| Videos with no captions | n/a | yes (AI transcription, up to 150 min) | partial | Player-caption capture and caption service tiers; no speech-to-text yet |
-| Batch or playlist summaries | no | yes (up to 20 videos) | no | Needs transcripts for videos that are not open; planned through the NouGen ingest tool |
+| Videos with no captions | n/a | yes (AI transcription, up to 150 min) | **yes (new)** | Local faster-whisper through the bridge, up to 150 minutes, $0; marked "from audio"; refuses when the disk is nearly full |
+| Batch or playlist summaries | no | yes (up to 20 videos) | **yes (new)** | Batch tab: up to 20 links or a playlist, one summary each, long videos read in parts, optional save of each to the vault |
 | Articles, PDFs, audio, files | yes (articles, PDFs) | yes (files, audio, PDF, images) | n/a | Out of scope for a YouTube panel |
 | Mobile apps | yes | yes | n/a | Chrome extension only |
 | Public highlights (crowd layer) | yes | no | n/a | Different model: private vault |
@@ -35,6 +35,6 @@ Legend: **yes** = shipped, **partial** = shipped with a stated limit, **no** = n
 
 ## Gaps still open, in order of value
 
-1. Transcribe videos with no captions (speech-to-text through the bridge).
-2. Batch and playlist summaries.
-3. Mind map PNG export and editing.
+1. Mind map PNG export and editing.
+2. Speech-to-text quality: the default `base` model is fast but mishears; `small` is better and slower.
+3. A smarter wait when YouTube rate-limits: the batch reports the block and lets the user press Continue; it does not schedule its own retry.

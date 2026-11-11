@@ -40,6 +40,11 @@ Ideas adopted from open-source summarizers:
 
 See `docs/feature-matrix.md` for how this compares with Glasp and NoteGPT and what is still open.
 
+## Videos without captions, and Batch
+- **No captions.** When YouTube gives no transcript, the extension asks the NouGenOpen bridge, which downloads the audio and transcribes it on this computer (faster-whisper, free, up to 150 minutes). A "from audio" chip marks such a transcript, because names and numbers may be wrong. If YouTube refuses the audio too, the panel says so plainly instead of calling the video captionless.
+- **Batch.** The Batch tab takes up to 20 YouTube links or a playlist link (a playlist of 50 adds its first 20) and writes one summary per video, one at a time, in the style you pick. Long videos are read in parts and combined. Each summary says whether its transcript came from captions or audio and checks its timestamps against the video. "Shard each" saves every finished summary and its transcript to your vault; Copy all, per-video Copy and Shard, and Continue after a failure are there too. Batch needs the bridge.
+- Both depend on the bridge routes `/v1/nougen/transcript` and `/v1/nougen/playlist` (`pip install "nougen-open[tube]"`). YouTube rate-limits bursts: after many requests it answers captions with `IpBlocked` and audio with HTTP 403 for a while. NouGenTube reports that and does not try to get around it.
+
 ## Morph
 The Morph tab reverses a video's intent: it asks what the video lets you build, and builds on what your vault already holds.
 1. **Intents.** The model names the video's buildable ideas as short search phrases.

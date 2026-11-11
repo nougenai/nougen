@@ -253,7 +253,7 @@
       <div class="hd"><div class="lg">N</div><div class="ti">NouGenTube<small id="mdl"></small></div>
         <button class="chip" id="hs" title="Save this video to NouGenShards: the full transcript, plus the summary if you have made one">Shard</button><button class="ib" id="th" title="Theme">◐</button><button class="ib" id="key" title="Settings: provider keys and routes">⚙</button><button class="ib" id="cp" title="Copy transcript">⧉</button><button class="ib" id="dl" title="Export">⤓</button><div class="menu" id="menu" hidden><button data-x="md">Markdown (everything)</button><button data-x="txt">Transcript .txt</button><button data-x="srt">Subtitles .srt</button><button data-x="plain">Transcript, no timestamps</button><button data-x="obsidian">Obsidian note .md</button><button data-x="html">Readable page .html</button><button data-x="csv">Highlights + transcript .csv</button><button data-x="json">Everything .json</button></div>
         <button class="ib" id="col" title="Collapse">▾</button></div>
-      <div class="note" id="note" hidden></div><div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button><button data-t="morph">Morph</button></div>
+      <div class="note" id="note" hidden></div><div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button><button data-t="morph">Morph</button><button data-t="batch">Batch</button></div>
       <div class="tb" id="tb"></div><div class="bd" id="bd"></div><div id="ft"></div></div></div>`;
     root.querySelector(".tabs").onclick = e => { const t = e.target.dataset.t; if (t) { S.tab = t; render(); } };
     root.getElementById("col").onclick = () => { const w = root.getElementById("wrap"); w.hidden = !w.hidden; root.querySelector(".p").style.height = w.hidden ? "auto" : ""; };
@@ -340,10 +340,11 @@
     // The extension was updated or reloaded while this tab stayed open: this copy can no longer
     // reach its background page, so say so instead of failing in confusing ways.
     if (!alive()) { bd.innerHTML = `<div class="mu">NouGenTube was updated. Refresh this tab to keep using it.</div><div class="mu"><button class="go" id="rf">Refresh tab</button></div>`; $("rf").onclick = () => location.reload(); return; }
+    if (S.tab === "batch") return renderBatch();
     if (S.err) { bd.innerHTML = `<div class="mu err">${esc(S.err)}</div><div class="mu"><button class="go" id="rt">Try again</button></div>`; $("rt").onclick = () => { S.vid = null; S.fresh = true; load(); }; return; }
     if (!S.lines.length) { bd.innerHTML = transcriptLoading(); return; }
     if (S.tab === "transcript") {
-      tb.innerHTML = `<input id="q" placeholder="Search transcript…" value="${esc(S.q || "")}"><span class="chip ${S.follow ? "on" : ""}" id="fl" title="Auto-scroll with the video">Follow</span><select id="trl" title="Show the transcript in another language, translated by your model">${"<option value=\"\">" + (S.tr ? "Original language" : "Translate…") + "</option>"}${LANGS.filter(l => l !== "Auto").map(l => `<option ${S.tr && S.tr.lang === l ? "selected" : ""}>${l}</option>`).join("")}</select>${S.lang === "saved" ? `<span class="chip" id="rl" title="This transcript was saved from an earlier visit. Click to fetch it from YouTube again.">saved ↻</span>` : `<span class="mu" style="padding:0">${S.lang || ""}</span>`}`;
+      tb.innerHTML = `<input id="q" placeholder="Search transcript…" value="${esc(S.q || "")}"><span class="chip ${S.follow ? "on" : ""}" id="fl" title="Auto-scroll with the video">Follow</span><select id="trl" title="Show the transcript in another language, translated by your model">${"<option value=\"\">" + (S.tr ? "Original language" : "Translate…") + "</option>"}${LANGS.filter(l => l !== "Auto").map(l => `<option ${S.tr && S.tr.lang === l ? "selected" : ""}>${l}</option>`).join("")}</select>${S.lang === "audio" ? `<span class="chip" title="This transcript was made by speech-to-text on this computer, so names and numbers may be wrong">from audio</span>` : ""}${S.lang === "saved" ? `<span class="chip" id="rl" title="This transcript was saved from an earlier visit. Click to fetch it from YouTube again.">saved ↻</span>` : `<span class="mu" style="padding:0">${S.lang || ""}</span>`}`;
       if ($("rl")) $("rl").onclick = () => { S.vid = null; S.fresh = true; load(); };
       $("q").oninput = e => { S.q = e.target.value; drawLines(); }; $("fl").onclick = () => { S.follow = !S.follow; render(); }; tb.style.flexWrap = "wrap"; $("trl").onchange = e => translateTranscript(e.target.value);
       drawLines();
@@ -755,6 +756,123 @@
     }, e => { if (e) return fail(e.replace(/^[\s⚠]+/, "")); save(); render(); });
   }
 
+  // ---------- Batch: many videos or a playlist, one summary each (NoteGPT: "batch summarize up to 20 videos") ----------
+  const tubeCall = (kind, body) => portCall("tube", { kind, body });
+  const BATCH_MAX = 20, BATCH_STYLES = ["brief", "tldr", "deep", "intel", "chapters", "steps"];
+  const idOf = s => { const m = String(s).match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([A-Za-z0-9_-]{11})/) || String(s).trim().match(/^([A-Za-z0-9_-]{11})$/); return m ? m[1] : null; };
+  const lineText = ls => ls.map(l => "[" + fmt(l.t) + "] " + l.text).join("\n");
+  const sysFor = (title, body) => "You are NouGenTube, analysing the YouTube video \"" + title + "\". Ground every statement in the transcript: state only what the speaker actually says, never outside knowledge; if a point has no basis in the transcript, drop it (shorter is better than invented). Cite moments as [m:ss] or [h:mm:ss] timestamps copied from the transcript. Be concise. Markdown only.\n\nTRANSCRIPT:\n" + body;
+  const stylePrompt = sty => STY[sty] + " " + (["intel", "mindmap", "chapters"].includes(sty) ? "" : LEN[S.len || "medium"]) + (S.lng && S.lng !== "Auto" ? " Write the answer in " + S.lng + "." : "");
+  // Timestamps in a summary that fall after the video's last line (plus two minutes).
+  const stampsOutside = (text, lastT) => [...String(text).matchAll(/\b(\d{1,2}:\d{2}(?::\d{2})?)\b/g)].filter(m => parseTs(m[1]) > lastT + 120).length;
+  // One video's summary. Long transcripts are read in chunks first, then the notes are combined.
+  async function summarizeLines(lines, title, sty, onStage) {
+    const full = lineText(lines), user = { role: "user", content: stylePrompt(sty) };
+    if (full.length <= 24000) { onStage("Summarizing"); const r = await ask1([{ role: "system", content: sysFor(title, full) }, user]); return { text: r.text.trim(), model: r.fin && r.fin.model }; }
+    const cs = chunks(lines), notes = [];
+    for (let i = 0; i < cs.length; i++) {
+      onStage("Reading part " + (i + 1) + " of " + cs.length);
+      const r = await ask1([{ role: "system", content: sysFor(title, cs[i].text) }, { role: "user", content: "Write concise bullet notes on every distinct point in this part, keeping exact names, numbers and the [m:ss] timestamps." }]);
+      notes.push(r.text.trim());
+    }
+    onStage("Combining the notes");
+    const r = await ask1([{ role: "system", content: sysFor(title, notes.join("\n\n")) }, user]);
+    return { text: r.text.trim(), model: r.fin && r.fin.model };
+  }
+  const btSave = () => { try { chrome.storage.local.set({ batch: { items: S.bt.items, sty: S.bt.sty, shardAll: S.bt.shardAll } }); } catch {} };
+  const btPaint = () => { if (S.tab === "batch") renderBatch(); };
+  async function batchShard(it) {
+    const lines = S.bt.mem[it.id], url = "https://www.youtube.com/watch?v=" + it.id;
+    const content = it.title + " - YouTube\n" + url + "\n\n" + it.text + (lines ? "\n\n---\n\nTranscript:\n" + paragraphs(lines).map(l => "(" + pad(l.t) + ") " + l.text).join("\n") : "");
+    const doc = { title: (it.title + " — NouGenTube " + (STYN[S.bt.sty] || "summary")).slice(0, 190), content, tags: ["nougentube", "tube-report:" + it.id, S.bt.sty || "brief", "batch"], source_uri: url };
+    let r = await portCall("shard", { doc }); if (!r) r = await portCall("shard", { doc });
+    it.shard = r && r.ok ? r.parts.map(p => p.shard_id != null ? p.shard_id + "@db" + p.db_index : "stored").join(", ") : "";
+    it.shardErr = r && r.ok ? "" : (r && r.error) || "no answer from the bridge";
+    btSave(); btPaint();
+  }
+  async function batchOne(it) {
+    const stage = t => { it.stage = t; btPaint(); };
+    it.status = "transcript"; it.err = ""; stage("Getting the transcript (captions first, then audio on this computer)");
+    const t = await tubeCall("transcript", { video_id: it.id, audio: "auto", max_minutes: 150 });
+    if (!t || !t.ok) throw new Error((t && t.error) || "the NouGenOpen bridge did not answer");
+    it.title = it.title || t.title || it.id; it.src = t.source === "whisper" ? "audio" : "captions"; S.bt.mem[it.id] = t.lines;
+    it.status = "summary";
+    const r = await summarizeLines(t.lines, it.title, S.bt.sty || "brief", stage);
+    it.text = r.text; it.model = r.model || ""; it.outside = stampsOutside(r.text, t.lines[t.lines.length - 1].t);
+    it.status = "done"; it.stage = ""; btSave(); btPaint();
+    if (S.bt.shardAll) await batchShard(it);
+  }
+  async function runBatch() {
+    const B = S.bt; if (B.running) return;
+    B.running = true; B.stop = false; btPaint();
+    for (const it of B.items) {
+      if (B.stop) break;
+      if (it.status !== "queued" && it.status !== "error") continue;
+      try { await batchOne(it); } catch (e) { it.status = "error"; it.err = String(e.message || e).replace(/^[\s⚠]+/, ""); it.stage = ""; btSave(); btPaint(); }
+    }
+    B.running = false; btSave(); btPaint();
+  }
+  async function batchAdd(text) {
+    const B = S.bt, notes = [], have = new Set(B.items.map(i => i.id));
+    let capped = false;
+    const add = (id, title) => { if (!id || have.has(id)) return false; if (B.items.length >= BATCH_MAX) { capped = true; return false; } have.add(id); B.items.push({ id, title: title || "", status: "queued" }); return true; };
+    for (const raw of String(text).split(/[\n,\s]+/).map(s => s.trim()).filter(Boolean)) {
+      if (/[?&]list=/.test(raw) && !/[?&]v=/.test(raw)) {
+        const p = await tubeCall("playlist", { url: raw });
+        if (p && p.ok) { let n = 0; for (const v of p.videos) if (add(v.id, v.title)) n++; notes.push("Added " + n + " of " + p.videos.length + " from the playlist" + (p.title ? " " + p.title : "") + "."); }
+        else notes.push("Could not read the playlist: " + ((p && p.error) || "no answer from the bridge"));
+      } else if (!add(idOf(raw))) { if (!idOf(raw)) notes.push("Skipped \"" + raw.slice(0, 40) + "\": not a YouTube link."); }
+    }
+    if (capped) notes.push("Only " + BATCH_MAX + " videos fit in one batch.");
+    B.notes = notes.join(" "); btSave(); btPaint();
+  }
+  async function batchPlaylistHere() {
+    if (!/[?&]list=/.test(location.href)) { S.bt.notes = "This video was not opened from a playlist. Paste a playlist link above instead."; return btPaint(); }
+    S.bt.notes = "Reading the playlist…"; btPaint();
+    await batchAdd("https://www.youtube.com/playlist?list=" + new URLSearchParams(location.search).get("list"));
+  }
+  const batchDoc = () => S.bt.items.filter(i => i.status === "done").map(i => "## " + i.title + "\nhttps://www.youtube.com/watch?v=" + i.id + "\n\n" + i.text).join("\n\n---\n\n") + "\n";
+  function renderBatch() {
+    const tb = $("tb"), bd = $("bd"), ft = $("ft"); ft.innerHTML = ""; tb.hidden = false; tb.style.flexWrap = "wrap";
+    if (!S.bt) {
+      S.bt = { items: [], mem: {}, sty: "brief", shardAll: true, loading: true };
+      chrome.storage.local.get("batch").then(d => { const b = d.batch || {}; S.bt = { items: (b.items || []).map(i => (i.status === "transcript" || i.status === "summary") ? { ...i, status: "queued", stage: "" } : i), mem: {}, sty: b.sty || "brief", shardAll: b.shardAll !== false }; if (S.tab === "batch") renderBatch(); }).catch(() => { S.bt.loading = false; });
+      bd.innerHTML = '<div class="mu">Loading…</div>'; tb.innerHTML = ""; return;
+    }
+    const B = S.bt, done = B.items.filter(i => i.status === "done").length, errs = B.items.filter(i => i.status === "error").length, queued = B.items.filter(i => i.status === "queued" || i.status === "error").length;
+    tb.innerHTML = modelPicker() + '<select id="bs" title="What each summary looks like">' + BATCH_STYLES.map(k => '<option value="' + k + '">' + STYN[k] + "</option>").join("") + "</select>" +
+      '<span class="chip ' + (B.shardAll ? "on" : "") + '" id="bsa" title="Save each finished summary and its transcript to your NouGenShards vault">Shard each</span>' +
+      '<button class="go" id="bgo"' + (!S.bridge || (!queued && !B.running) ? " disabled" : "") + ">" + (B.running ? '<span class="spin"></span>Stop' : done && queued ? "Continue" : "Summarize all") + "</button>";
+    wirePicker(); $("bs").value = B.sty || "brief"; $("bs").onchange = e => { B.sty = e.target.value; btSave(); };
+    $("bsa").onclick = () => { B.shardAll = !B.shardAll; btSave(); btPaint(); };
+    $("bgo").onclick = () => { if (B.running) { B.stop = true; $("bgo").disabled = true; } else runBatch(); };
+    const pct = B.items.length ? Math.round(100 * done / B.items.length) : 0;
+    const row = it => {
+      const icon = it.status === "done" ? '<span class="vok">✓</span>' : it.status === "error" ? '<span class="vno">!</span>' : it.status === "queued" ? '<span class="mu">·</span>' : '<span class="spin"></span>';
+      const head = '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(it.title || it.id) + "</span>";
+      const meta = it.status === "done" ? '<div class="mu" style="font-size:12px">' + (it.src === "audio" ? "Transcribed from the audio on this computer, so check names and numbers. " : "") + (it.outside ? '<span class="err">' + it.outside + " timestamp" + (it.outside === 1 ? "" : "s") + " fall outside the video.</span> " : "Timestamps inside the video. ") + (it.shard ? "Saved " + esc(it.shard) + "." : it.shardErr ? '<span class="err">Not saved: ' + esc(it.shardErr) + "</span>" : "") + (it.model ? " · " + esc(it.model) : "") + "</div>" : it.status === "error" ? '<div class="mu err" style="font-size:12px">' + esc(it.err) + "</div>" : it.stage ? '<div class="mu" style="font-size:12px">' + esc(it.stage) + "</div>" : "";
+      const body = it.status === "done" ? '<details class="vf"><summary class="vh" style="cursor:pointer">Read the summary</summary><div class="md">' + md(it.text) + '</div><div class="acts"><span class="chip" data-cp="' + it.id + '">Copy</span>' + (it.shard ? "" : '<span class="chip" data-sh="' + it.id + '">Shard</span>') + "</div></details>" : "";
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--ln)"><div class="vr">' + icon + head + '<a class="mu" href="https://www.youtube.com/watch?v=' + it.id + '" target="_blank" rel="noopener" title="Open the video">↗</a><span class="chip" data-rm="' + it.id + '" title="Remove">×</span></div>' + meta + body + "</div>";
+    };
+    bd.innerHTML = (S.bridge ? "" : '<div class="mu err">Batch needs the NouGenOpen bridge, which fetches transcripts and transcribes audio on this computer. Start <b>nougen-open serve</b> and reopen this tab.</div>') +
+      '<textarea id="bl" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg);color:inherit;border:1px solid var(--ln);border-radius:var(--r);padding:8px;font:inherit" placeholder="Paste YouTube links, one per line (up to ' + BATCH_MAX + '), or a playlist link">' + esc(B.draft || "") + "</textarea>" +
+      '<div class="acts"><span class="chip on" id="ba">Add links</span><span class="chip" id="bc">Add this video</span><span class="chip" id="bp" title="Add every video of the playlist this video was opened from">Add this playlist</span></div>' +
+      (B.notes ? '<div class="mu">' + esc(B.notes) + "</div>" : "") +
+      (B.items.length ? '<div style="margin:8px 0 4px;height:4px;background:var(--ln);border-radius:2px"><div style="height:4px;width:' + pct + '%;background:var(--ac);border-radius:2px"></div></div><div class="mu" style="font-size:12px">' + done + " of " + B.items.length + " done" + (errs ? ", " + errs + " failed" : "") + "</div>" : '<div class="mu">Each video gets its own summary. Videos without captions are transcribed from their audio on this computer (up to 150 minutes each).</div>') +
+      B.items.map(row).join("") +
+      (done ? '<div class="acts" style="margin-top:8px"><span class="chip on" id="bcopy">Copy all summaries</span><span class="chip" id="bshall">Shard unsaved</span><span class="chip" id="bclr">Clear</span></div>' : B.items.length ? '<div class="acts" style="margin-top:8px"><span class="chip" id="bclr">Clear</span></div>' : "");
+    $("bl").oninput = e => { B.draft = e.target.value; };
+    $("ba").onclick = async () => { const t = $("bl").value; B.draft = ""; await batchAdd(t); };
+    $("bc").onclick = () => batchAdd(S.vid ? "https://www.youtube.com/watch?v=" + S.vid : "");
+    $("bp").onclick = batchPlaylistHere;
+    bd.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { B.items = B.items.filter(i => i.id !== b.dataset.rm); delete B.mem[b.dataset.rm]; btSave(); btPaint(); });
+    bd.querySelectorAll("[data-cp]").forEach(b => b.onclick = () => { const it = B.items.find(i => i.id === b.dataset.cp); navigator.clipboard.writeText(it.title + " - YouTube\nhttps://www.youtube.com/watch?v=" + it.id + "\n\n" + it.text).then(() => { b.textContent = "Copied ✓"; setTimeout(() => { if (b.isConnected) b.textContent = "Copy"; }, 1300); }); });
+    bd.querySelectorAll("[data-sh]").forEach(b => b.onclick = async () => { b.innerHTML = '<span class="spin"></span> Saving'; await batchShard(B.items.find(i => i.id === b.dataset.sh)); });
+    if ($("bcopy")) $("bcopy").onclick = () => navigator.clipboard.writeText(batchDoc()).then(() => { const e = $("bcopy"); e.textContent = "Copied ✓"; setTimeout(() => { if (e.isConnected) e.textContent = "Copy all summaries"; }, 1300); });
+    if ($("bshall")) $("bshall").onclick = async () => { for (const it of B.items) if (it.status === "done" && !it.shard) await batchShard(it); };
+    if ($("bclr")) $("bclr").onclick = () => { if (B.running) return; B.items = []; B.mem = {}; B.notes = ""; btSave(); btPaint(); };
+  }
+
   // ---------- persistence / export ----------
   const key = () => "v:" + S.vid;
   function save() { chrome.storage.local.set({ [key()]: { summary: S.summary, chat: S.chat, hl: S.hl, shardMsg: S.shardMsg || "", morph: S.morph && !S.morph.busy ? S.morph : null, tr: S.tr && !S.tr.busy && !S.tr.err ? { lang: S.tr.lang, out: S.tr.out, done: S.tr.out.length } : null } }); }
@@ -832,11 +950,19 @@
           if (info && info.vid === vid && !info.tracks.length && !document.querySelector(BTN)) break;
         }
       }
+      // 5. Nothing from YouTube: the NouGenOpen bridge can transcribe the audio on this computer.
+      S.audioErr = "";
+      if (!r && !gone() && S.bridge) {
+        setStage("Transcribing the audio on this computer. A long video can take a few minutes");
+        const t = await tubeCall("transcript", { video_id: vid, audio: "auto", max_minutes: 150 });
+        if (t && t.ok && t.lines && t.lines.length) r = { lines: t.lines, lang: t.source === "whisper" ? "audio" : "bridge" };
+        else S.audioErr = (t && t.error) || "the bridge did not answer";
+      }
       if (gone()) return;
       if (r) { r.lines = monotonic(r.lines); S.lines = r.lines; S.lang = r.lang; S.paras = paragraphs(r.lines); if (r.lang !== "saved") cachePut(vid, r); }
       else S.err = (info && info.vid === vid && !info.tracks.length && !document.querySelector(BTN))
-        ? "This video has no captions, so there is no transcript to read."
-        : "YouTube has captions for this video but didn't return them after 3 tries.";
+        ? "This video has no captions, so there is no transcript to read." + (S.audioErr ? " Audio transcription: " + S.audioErr : S.bridge ? "" : " Start the NouGenOpen bridge (nougen-open serve) to transcribe the audio on this computer.")
+        : "YouTube has captions for this video but didn't return them after 3 tries." + (S.audioErr ? " Audio transcription: " + S.audioErr : "");
     } catch (e) { S.err = "Transcript fetch failed: " + e.message; }
     render();
   }

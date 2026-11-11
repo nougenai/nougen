@@ -158,6 +158,16 @@ chrome.runtime.onConnect.addListener(port => {
     });
     return;
   }
+  if (port.name === "tube") {
+    port.onMessage.addListener(async msg => {
+      if (msg.ping) return;
+      const kind = msg.kind === "playlist" ? "playlist" : "transcript";
+      try { const r = await fetch(NGO + "/v1/nougen/" + kind, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body), signal: AbortSignal.timeout(kind === "playlist" ? 120000 : 1500000) });
+        const j = await r.json(); port.postMessage(r.ok ? { ...j, ok: true } : { ok: false, error: j.error?.message || ("bridge said " + r.status), code: r.status });
+      } catch (e) { port.postMessage({ ok: false, error: e && e.name === "TimeoutError" ? "the bridge took too long" : "the NouGenOpen bridge is not running (nougen-open serve)" }); }
+    });
+    return;
+  }
   if (port.name === "web") {
     port.onMessage.addListener(async msg => {
       if (msg.ping) return;
