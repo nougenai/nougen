@@ -33,13 +33,20 @@ Ideas adopted from open-source summarizers:
 - Map-reduce: bskrishna2006 (Apache-2.0).
 - Tube-Brief has no license, so nothing was copied from it.
 
+## Transcript tools, library chat and exports
+- **Translate.** The Transcript tab has a language menu. Your model translates the transcript in batches of 30 lines, shown in place, saved per video, and used by Copy and the exports. Pick the original language to go back.
+- **My library.** In Chat, switch from "This video" to "My library" to ask one question across every video you have shared to your vault. The bridge searches shards tagged `tube-report:` or `tube-morph:`; each answer lists its sources and marks the ones it cites.
+- **Exports.** The download menu writes Markdown, TXT, SRT, TXT without timestamps, an Obsidian note (YAML front matter), a readable HTML page, a CSV of highlights and transcript, or one JSON file with everything.
+
+See `docs/feature-matrix.md` for how this compares with Glasp and NoteGPT and what is still open.
+
 ## Morph
 The Morph tab reverses a video's intent: it asks what the video lets you build, and builds on what your vault already holds.
 1. **Intents.** The model names the video's buildable ideas as short search phrases.
 2. **Cross-reference.** The bridge looks each phrase up in NouGenShards (`POST /v1/nougen/recall`) and returns the matching shards. The video's own saved report is excluded. Results are over-fetched and split into two groups, vault knowledge (up to 10) and other saved videos (up to 4, one per video), so fresh video reports cannot crowd out older material.
-3. **Plan.** For the target you pick (best fit, code architecture, app, website, skill/workflow, or "Something else" with your own words) it writes: Intent of the video, What the vault already has, Morph plan, First build steps, Gaps. Shards are cited as `[id@dbN]`.
+3. **Plan.** For the target you pick (best fit, code architecture, app, website, skill/workflow, or "Something else" with your own words) it writes: Intent of the video, What the vault already has, Latest on the web, Morph plan, First build steps, Gaps, and a Valerion pass, the 21 steps of NouGenMorph orchestration (`NouGen/docs/architecture.md`), numbered in order. Shards are cited as `[id@dbN]`.
 3b. **Latest on the web.** At the same time the bridge searches the live web for the top three intents (`POST /v1/nougen/web`: the three searches start on different providers, Google through SerpAPI, Exa and Tavily, then Context.dev, each used only if the bridge holds a key for it; a refused key is rested and the next is tried; keyless DuckDuckGo is the last resort; last-year freshness, top three pages read to text through the keyless Jina reader, cached 24 hours). The plan gets a "Latest on the web" section citing sources as `[w1]`, each linked to its page. Search keys live on the bridge (`SERPAPI_API_KEY`, `EXA_API_KEY`, `TAVILY_API_KEY`, `CONTEXT_DEV_API_KEY` in the environment, comma-separated for several, or in the keymaker), never in the extension.
-4. **Check.** Code confirms every cited shard is one the vault returned, every cited web source is one that was fetched, every timestamp is inside the video, and no section is missing (a cut-off plan is flagged).
+4. **Check.** Code confirms every cited shard is one the vault returned, every cited web source is one the search found (and how many were read in full), all 21 Valerion steps appear numbered in order, every timestamp is inside the video, and no section is missing or empty (a cut-off plan is flagged). Grouped citations such as `[12@db3, 14@db3]` are read too. The results are written into the copied and saved plan. The checks live in `morph-core.js`, which has no browser dependencies.
 
 "Shard it" saves the plan with the tag `tube-morph:<video id>`; a later morph of the same video says it was morphed before. "Copy build prompt" copies the plan as a prompt for a coding agent. If the bridge is not running the vault cannot be read: Morph still writes a plan from the video alone and marks it "Vault not read".
 

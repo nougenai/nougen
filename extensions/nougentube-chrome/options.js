@@ -59,7 +59,7 @@ function wire(p) {
     btn.disabled = false;
     if (!r?.ok) return status(st, r?.error || "No answer from the provider", false);
     const prev = prov[p.id]?.model;
-    const model = (prev && r.models.includes(prev)) ? prev : ((p.prefer || []).find(m => r.models.includes(m)) || (p.preferRe ? r.models.filter(m => new RegExp(p.preferRe).test(m)).sort().pop() : "") || r.models[0]);
+    const model = (prev && r.models.includes(prev)) ? prev : ((p.prefer || []).find(m => r.models.includes(m)) || (p.preferRe ? r.models.filter(m => new RegExp(p.preferRe).test(m)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop() : "") || r.models[0]);
     prov[p.id] = { key, base, model, models: r.models }; await save();
     sel.innerHTML = r.models.map(m => `<option ${m === model ? "selected" : ""}>${esc(m)}</option>`).join("");
     $("mr-" + p.id).hidden = false; $("k-" + p.id).value = ""; $("k-" + p.id).placeholder = "Key saved. Paste a new one to replace it.";

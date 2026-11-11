@@ -160,7 +160,7 @@ chrome.runtime.onConnect.addListener(port => {
   if (port.name === "web") {
     port.onMessage.addListener(async msg => {
       if (msg.ping) return;
-      try { const r = await fetch(NGO + "/v1/nougen/web", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body) });
+      try { const r = await fetch(NGO + "/v1/nougen/web", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body), signal: AbortSignal.timeout(110000) });
         const j = await r.json(); port.postMessage(r.ok ? { ok: true, results: j.results || [], providers: j.providers || [], failed: j.failed || [] } : { ok: false, error: j.error?.message || ("bridge said " + r.status) });
       } catch { port.postMessage({ ok: false, error: "the NouGenOpen bridge is not running (nougen-open serve)" }); }
     });

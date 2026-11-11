@@ -4,6 +4,7 @@ All notable changes to NouGenShards will be documented in this file.
 
 ## [Unreleased]
 ### Added
+- **NouGenTube Chrome extension** (`extensions/nougentube-chrome`, 0.11.0): YouTube side panel with transcript, summary, chat, highlights and a Morph tab. Morph cross-references the NouGenShards vault and the live web (Google via SerpAPI, Exa, Tavily, Context.dev, keyless DuckDuckGo last) and writes a plan with the Valerion 21-step pass, then checks every shard, web and timestamp citation in code. Routes: local Ollama, the NouGenOpen free fleet, or any provider key the user adds. Also: transcript translation, chat across the saved library, and Obsidian, HTML, CSV and JSON exports (feature comparison in `extensions/nougentube-chrome/docs/feature-matrix.md`). Search keys stay on the NouGenOpen bridge. Spec: `extensions/nougentube-chrome/docs/morph-spec.md`.
 - **Elevation Atlas** (`docs/elevation-atlas.md`): a 1000-step, repository-grounded elevation roadmap in ten zones (memory physics, capture, retrieval, graph, temporal/Griot, federation, truth/canon, security, scale, autonomous memory). Every step carries a status: ✅ only when a file and function implement it, 🟡 for partial with the gap named, ⬜ for missing with a landing spot. Steps cross-reference #551 and #550. It includes a ground-truth table that corrects the draft plan against main @ ae40d10, and the first five verified moves.
 
 ## [1.3.1] - 2026-08-20
