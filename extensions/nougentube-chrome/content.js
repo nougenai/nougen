@@ -192,7 +192,7 @@
   .ti{font-weight:700;font-size:15px;flex:1 1 0;min-width:0;line-height:1.25}.ti small{display:block;color:var(--mu);font-weight:400;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   button,select,input{font:inherit;color:inherit}
   .ib{background:none;border:0;cursor:pointer;color:var(--mu);padding:4px 6px;border-radius:6px}.ib:hover{background:var(--card);color:var(--tx)}
-  .tabs{display:flex;border-bottom:1px solid var(--ln)}.tabs button{flex:1;background:none;border:0;padding:10px 0;cursor:pointer;color:var(--mu);font-weight:600;border-bottom:2px solid transparent}
+  .tabs{display:flex;border-bottom:1px solid var(--ln)}.tabs button{flex:1 1 auto;background:none;border:0;padding:10px 2px;font-size:13px;cursor:pointer;color:var(--mu);font-weight:600;border-bottom:2px solid transparent}
   .tabs button.on{color:var(--tx);border-color:var(--ac)}
   .tb{display:flex;gap:6px;padding:8px 12px;align-items:center;border-bottom:1px solid var(--ln)}
   .tb input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:var(--r);padding:6px 10px}
@@ -253,7 +253,7 @@
       <div class="hd"><div class="lg">N</div><div class="ti">NouGenTube<small id="mdl"></small></div>
         <button class="chip" id="hs" title="Save this video to NouGenShards: the full transcript, plus the summary if you have made one">Shard</button><button class="ib" id="th" title="Theme">◐</button><button class="ib" id="key" title="Settings: provider keys and routes">⚙</button><button class="ib" id="cp" title="Copy transcript">⧉</button><button class="ib" id="dl" title="Export">⤓</button><div class="menu" id="menu" hidden><button data-x="md">Markdown (everything)</button><button data-x="txt">Transcript .txt</button><button data-x="srt">Subtitles .srt</button></div>
         <button class="ib" id="col" title="Collapse">▾</button></div>
-      <div class="note" id="note" hidden></div><div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button></div>
+      <div class="note" id="note" hidden></div><div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button><button data-t="morph">Morph</button></div>
       <div class="tb" id="tb"></div><div class="bd" id="bd"></div><div id="ft"></div></div></div>`;
     root.querySelector(".tabs").onclick = e => { const t = e.target.dataset.t; if (t) { S.tab = t; render(); } };
     root.getElementById("col").onclick = () => { const w = root.getElementById("wrap"); w.hidden = !w.hidden; root.querySelector(".p").style.height = w.hidden ? "auto" : ""; };
@@ -285,6 +285,14 @@
   function md(t) {
     let h = esc(t).replace(/\[?\b(\d{1,2}:\d{2}(?::\d{2})?)\b(?:,\s*)?\]?/g, (m, ts) => `<a class="t" data-seek="${parseTs(ts)}">${ts}</a>${/,/.test(m) ? " " : ""}`)
       .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^#{1,4} (.+)$/gm, "<h3>$1</h3>");
+    // Tables. Some models put a whole table on one line ("| a | b | |---|---| | x | y |"): split it into rows first.
+    h = h.replace(/^\|.*\|\s*:?-{3,}.*$/gm, l => l.replace(/\|\s+\|/g, "|\n|"));
+    h = h.replace(/(?:^\|.+\|[ \t]*(?:\n|$))+/gm, blk => {
+      const rows = blk.trim().split("\n").map(r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim()));
+      const body = rows.filter(r => !r.every(c => /^:?-{3,}:?$/.test(c)));
+      if (body.length < 2) return blk;
+      return "<table>" + body.map((r, i) => "<tr>" + r.map(c => i ? `<td>${c}</td>` : `<th>${c}</th>`).join("") + "</tr>").join("") + "</table>\n";
+    });
     h = h.replace(/(?:^[-*] .+(?:\n|$))+/gm, b => "<ul>" + b.trim().split("\n").map(l => "<li>" + l.slice(2) + "</li>").join("") + "</ul>");
     return h.replace(/\n{2,}/g, "<br><br>");
   }
@@ -358,6 +366,8 @@
       if ($("cRep")) $("cRep").onclick = () => flash("cRep", S.summary);
       if ($("cAI")) $("cAI").onclick = () => flash("cAI", ARCHITECT + "\n\n---\n\n" + copyText());
       if ($("shd")) $("shd").onclick = shardIt;
+    } else if (S.tab === "morph") {
+      renderMorph();
     } else if (S.tab === "chat") {
       tb.innerHTML = modelPicker() + `<span class="chip" data-p="What are the main takeaways?">Takeaways</span><span class="chip" data-p="List every tool, product or resource mentioned, with timestamps.">Resources</span><span class="chip" data-p="What claims here might be wrong or need checking?">Fact-check</span>`;
       wirePicker(); tb.querySelectorAll("[data-p]").forEach(c => c.onclick = () => ask(c.dataset.p));
@@ -527,6 +537,102 @@
     delete b.dataset.busy; b.textContent = label; save(); render(); note();
   }
 
+  // ---------- Morph: turn the video's ideas into something to build, using what the vault already holds ----------
+  const TARGETS = { best: "Best fit", code: "Code architecture", app: "App", site: "Website", skill: "Skill or workflow" };
+  const TARGET_ASK = {
+    best: "Choose the single most valuable thing to build from this video given what the vault already holds, and say in one line why that form fits best.",
+    code: "Design a code architecture: modules, their responsibilities, the data that flows between them, and where existing vault work plugs in.",
+    app: "Design an app: who it is for, its screens or commands, the core loop, the data it stores, and which vault pieces it reuses.",
+    site: "Design a website: its pages, what each page must do, the content it needs, and which vault pieces supply it.",
+    skill: "Design a reusable skill or workflow: its trigger, inputs, ordered steps, outputs, stopping condition, and which vault pieces it calls." };
+  const refOf = h => `${h.id}@db${h.db}`;
+  // One whole answer from the current route (the Auto fallback applies here too).
+  const ask1 = messages => new Promise((res, rej) => { let out = ""; S.onStage = null; S.onReset = () => { out = ""; };
+    stream(messages, d => { out += d; }, (e, fin) => e ? rej(new Error(e.replace(/^[\s⚠]+/, ""))) : res({ text: out, fin })); });
+  const portCall = (name, payload) => new Promise(res => { const p = chrome.runtime.connect({ name }); const ka = setInterval(() => { try { p.postMessage({ ping: 1 }); } catch {} }, 15000);
+    const fin = v => { clearInterval(ka); res(v); try { p.disconnect(); } catch {} };
+    p.onMessage.addListener(fin); p.onDisconnect.addListener(() => fin(null)); p.postMessage(payload); });
+  const morphSource = () => { const ok = S.summary && !S.summary.trim().startsWith("⚠");
+    return ok ? "REPORT ON THE VIDEO:\n" + S.summary.trim().slice(0, 9000) + "\n\nTRANSCRIPT (start):\n" + tx(9000) : "TRANSCRIPT:\n" + tx(20000); };
+
+  async function morph() {
+    const M = S.morph = { target: $("tg").value, text: "", shards: [], prior: [], queries: [], t0: Date.now(), busy: true, err: "" };
+    const bd = $("bd"), stage = (t, sub = "") => { if (S.tab === "morph") bd.innerHTML = loader(t, sub, M.t0); };
+    renderMorph();
+    try {
+      // 1. What is this video really teaching? Reduce it to phrases the vault can be searched for.
+      stage("Reading the video's intents", "Naming the ideas in it that could be built.");
+      let phrases = [];
+      try {
+        const r = await ask1([{ role: "system", content: `You read a YouTube video and name what it teaches that could be BUILT. Video: "${vtitle()}".\n\n${morphSource()}` },
+          { role: "user", content: "List 6 short search phrases, 3 to 7 words each, one per line, no numbering and no commentary. Each names one concrete technique, system, tool or pattern from this video that could be built into software or a workflow." }]);
+        phrases = r.text.split("\n").map(l => l.replace(/^[\s\-*•\d.)]+/, "").replace(/["*`]/g, "").trim()).filter(l => l.length >= 6 && l.length <= 90).slice(0, 6);
+      } catch (e) { console.warn("[NouGenTube] intent step failed, using the title", e); }
+      if (phrases.length < 2) phrases = [vtitle(), ...phrases];
+      M.queries = [...new Set([...phrases, vtitle()])].slice(0, 7);
+
+      // 2. Cross-reference the vault. The video's own saved report is not prior knowledge about it.
+      stage(`Cross-referencing your vault`, `Searching NouGenShards for ${M.queries.length} ideas from the video.`);
+      let rc = await portCall("recall", { body: { queries: M.queries, limit: 5, max: 14, exclude_tags: ["tube-report:" + S.vid] } });
+      if (!rc) rc = await portCall("recall", { body: { queries: M.queries, limit: 5, max: 14, exclude_tags: ["tube-report:" + S.vid] } });
+      if (!rc?.ok) throw new Error(rc?.error || "the NouGenOpen bridge did not answer, so the vault could not be read");
+      M.prior = rc.shards.filter(h => (h.tags || []).includes("tube-morph:" + S.vid));
+      M.shards = rc.shards.filter(h => !M.prior.includes(h));
+
+      // 3. Write the plan, citing only shards the vault really returned.
+      stage("Writing the morph plan", `${M.shards.length} vault shards matched.`);
+      const vault = M.shards.length ? M.shards.map(h => `[${refOf(h)}] ${h.title}\n${h.snippet}`).join("\n\n") : "(the vault returned nothing related)";
+      const sys = `You are NouGenTube Morph. You reverse a video's intent: not "what was said" but "what this lets us build", and you build on what the user's vault of saved knowledge (shards) already holds.\n` +
+        `Rules: cite a shard only by a reference that appears in VAULT SHARDS, exactly as written, like [${M.shards[0] ? refOf(M.shards[0]) : "123@db4"}]. Never invent a shard. Cite video moments as [m:ss]. If the vault has nothing relevant for a point, say so plainly. Markdown only, no intro or outro.\n\n` +
+        `VIDEO: "${vtitle()}"\n${morphSource()}\n\nVAULT SHARDS:\n${vault}`;
+      const task = `${TARGET_ASK[M.target]}\n\nUse exactly these sections:\n### Intent of the video\nWhat it is really teaching, restated as 3-5 capabilities someone could build, each with its [m:ss].\n` +
+        `### What the vault already has\nBullets. Each cites one shard reference and says how it connects to an intent above.\n### Morph plan\nThe design for the target above: its parts, how data moves between them, and which cited shards are reused or extended.\n` +
+        `### First build steps\n5-8 ordered, concrete steps, each small enough to finish in one sitting.\n### Gaps\nWhat the vault lacks for this build and what to capture or learn next.` + (S.lng && S.lng !== "Auto" ? `\nWrite in ${S.lng}.` : "");
+      S.onStage = t => { if (!M.text) stage(t); }; S.onReset = () => { M.text = ""; };
+      await new Promise((res, rej) => stream([{ role: "system", content: sys }, { role: "user", content: task }],
+        d => { M.text += d; if (S.tab === "morph") bd.innerHTML = `<div class="md">${md(M.text)}</div>` + WRITING; },
+        (e, fin) => { if (e) return rej(new Error(e.replace(/^[\s⚠]+/, "")));
+          M.text += `\n\n— ${fin.model}, ${fin.tokens} tokens, ${Math.round((Date.now() - M.t0) / 1000)}s, ${fin.where}${fin.failed && fin.failed.length ? ` · after ${fin.failed.length} failed route${fin.failed.length === 1 ? "" : "s"}` : ""}`; res(); }));
+    } catch (e) { M.err = String(e.message || e); }
+    M.busy = false; save(); renderMorph();
+  }
+  // Every cited shard must be one the vault returned; every timestamp must be inside the video.
+  function morphCheck(M) {
+    const known = new Set(M.shards.map(refOf)), cited = [...new Set([...M.text.matchAll(/\[(\d+@db\d+)\]/g)].map(m => m[1]))];
+    const bad = cited.filter(c => !known.has(c)), c = check(M.text);
+    return { cited, bad, ts: c.ts, badTs: c.bad };
+  }
+  function morphDoc(M) {
+    const k = morphCheck(M);
+    return `${vtitle()} - YouTube\nhttps://www.youtube.com/watch?v=${S.vid}\nMorph target: ${TARGETS[M.target]}\n\n${M.text.trim()}\n\n### Automatic check\n- Shards cited: ${k.cited.length}; not returned by the vault: ${k.bad.length ? k.bad.join(", ") : "none"}\n- Timestamps cited: ${k.ts}; outside the video: ${k.badTs.length ? k.badTs.join(", ") : "none"}\n\n` +
+      `### Vault shards cross-referenced\n${M.shards.map(h => `- [${refOf(h)}] ${h.title} (matched: ${h.matched.join("; ")})`).join("\n") || "- none"}\n\n### Search phrases\n${M.queries.map(q => "- " + q).join("\n")}\n`;
+  }
+  function renderMorph() {
+    if (S.tab !== "morph" || !root) return;
+    const tb = $("tb"), bd = $("bd"), M = S.morph;
+    tb.style.flexWrap = "wrap";
+    tb.innerHTML = modelPicker() + `<select id="tg" title="What to morph it into">${Object.entries(TARGETS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><button class="go" id="mgo">${M?.text ? "Morph again" : "Morph"}</button>`;
+    wirePicker(); $("tg").value = M?.target || S.tgt || "best"; $("tg").onchange = e => { S.tgt = e.target.value; };
+    $("mgo").onclick = morph; if (M?.busy) { $("mgo").disabled = true; $("mgo").innerHTML = '<span class="spin"></span>Working'; return; }
+    if (!S.bridge) { bd.innerHTML = `<div class="mu">Morph reads your NouGenShards vault through the local NouGenOpen bridge, which is not running. Start it with <b>nougen-open serve</b>, then reopen this tab.</div>`; $("mgo").disabled = true; return; }
+    if (M?.err && !M.text) { bd.innerHTML = `<div class="mu err">${esc(M.err)}</div><div class="mu">Nothing was written. Press Morph to try again.</div>`; return; }
+    if (!M?.text) { bd.innerHTML = `<div class="mu">Morph reverses the video's intent: it names what the video lets you build, looks up related shards in your vault, and writes a plan that builds on what you already have. Pick a target and press Morph.</div>`; return; }
+    const k = morphCheck(M), row = (ok, t) => `<div class="vr"><span class="${ok ? "vok" : "vno"}">${ok ? "✓" : "!"}</span><span>${t}</span></div>`;
+    bd.innerHTML = `<div class="acts"><span class="chip on" id="mc">Copy morph plan</span><span class="chip" id="ms" title="Save this plan to NouGenShards">Shard it</span></div>` +
+      (M.prior.length ? `<div class="mu">This video was morphed before: ${M.prior.map(h => esc(refOf(h))).join(", ")}.</div>` : "") +
+      `<details class="vf"><summary class="vh" style="cursor:pointer">Cross-referenced ${M.shards.length} vault shard${M.shards.length === 1 ? "" : "s"}</summary>${M.shards.map(h => `<div class="vr"><span class="vok">${esc(refOf(h))}</span><span>${esc(h.title)}</span></div>`).join("") || `<div class="mu" style="padding:4px 0">The vault returned nothing related to this video.</div>`}</details>` +
+      `<div class="md">${md(M.text)}</div><div class="vf"><div class="vh">Checked against your vault and the transcript</div>` +
+      row(!k.bad.length, k.bad.length ? `${k.bad.length} cited shard${k.bad.length === 1 ? " is" : "s are"} not among those the vault returned: ${esc(k.bad.join(", "))}` : `${k.cited.length} shard${k.cited.length === 1 ? "" : "s"} cited, all returned by the vault`) +
+      (!k.cited.length && M.shards.length ? row(false, "The plan cites no vault shards, so it does not yet build on what you have") : "") +
+      row(!k.badTs.length, k.badTs.length ? `${k.badTs.length} timestamps fall outside the video` : `${k.ts} timestamps cited, all inside the video`) + `</div>`;
+    $("mc").onclick = () => navigator.clipboard.writeText(morphDoc(M)).then(() => { const e = $("mc"); e.textContent = "Copied ✓"; setTimeout(() => { if (e.isConnected) e.textContent = "Copy morph plan"; }, 1300); });
+    $("ms").onclick = async () => { const b = $("ms"); if (b.dataset.busy) return; b.dataset.busy = "1"; b.innerHTML = '<span class="spin"></span> Saving';
+      const doc = { title: `${vtitle()} — NouGenTube morph (${TARGETS[M.target]})`.slice(0, 190), content: morphDoc(M), tags: ["nougentube", "tube-morph:" + S.vid, "morph-" + M.target], source_uri: "https://www.youtube.com/watch?v=" + S.vid };
+      let r = await portCall("shard", { doc }); if (!r) r = await portCall("shard", { doc });
+      S.shardMsg = r?.ok ? `Morph plan saved to NouGenShards: ${r.parts.map(p => p.shard_id != null ? `${p.shard_id}@db${p.db_index}` : "stored").join(", ")}.` : `Could not save to NouGenShards: ${r?.error || "the local bridge did not answer"}`;
+      save(); renderMorph(); note(); };
+  }
+
   async function summarize() {
     S.summary = ""; S.shardMsg = ""; S.sty = $("sty").value; S.len = $("len").value; S.lng = $("lng").value;
     if (S.sty === "custom" && !(S.custom || "").trim()) return $("cp2")?.focus();
@@ -557,7 +663,7 @@
 
   // ---------- persistence / export ----------
   const key = () => "v:" + S.vid;
-  function save() { chrome.storage.local.set({ [key()]: { summary: S.summary, chat: S.chat, hl: S.hl, shardMsg: S.shardMsg || "" } }); }
+  function save() { chrome.storage.local.set({ [key()]: { summary: S.summary, chat: S.chat, hl: S.hl, shardMsg: S.shardMsg || "", morph: S.morph && !S.morph.busy ? S.morph : null } }); }
   const saveHl = save;
   // Copy format: "<title> - YouTube\n<url>\n\nTranscript:\n(mm:ss) paragraph"
   const pad = t => { t = Math.floor(t); const h = t / 3600 | 0, m = String((t % 3600) / 60 | 0).padStart(2, "0"), x = String(t % 60).padStart(2, "0"); return h ? `${h}:${m}:${x}` : `${m}:${x}`; };
@@ -584,7 +690,7 @@
     if (!mount()) return setTimeout(load, 500);
     if (!alive()) return render();
     if (vid === S.vid) return;
-    Object.assign(S, { vid, lines: [], paras: [], err: null, summary: "", chat: [], hl: {}, q: "", tT0: Date.now(), tStage: "", shardMsg: "" }); render();
+    Object.assign(S, { vid, lines: [], paras: [], err: null, summary: "", chat: [], hl: {}, q: "", tT0: Date.now(), tStage: "", shardMsg: "", morph: null }); render();
     const st = (await chrome.storage.local.get(key()))[key()]; if (st) Object.assign(S, st);
     Object.assign(S, await chrome.storage.sync.get(["sty", "len", "lng", "custom"])); render(); note();
     try {

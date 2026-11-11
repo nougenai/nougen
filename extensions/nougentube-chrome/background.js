@@ -145,6 +145,15 @@ chrome.runtime.onConnect.addListener(port => {
     });
     return;
   }
+  if (port.name === "recall") {
+    port.onMessage.addListener(async msg => {
+      if (msg.ping) return;
+      try { const r = await fetch(NGO + "/v1/nougen/recall", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body) });
+        const j = await r.json(); port.postMessage(r.ok ? { ok: true, shards: j.shards || [], failed: j.failed || [] } : { ok: false, error: j.error?.message || ("bridge said " + r.status) });
+      } catch { port.postMessage({ ok: false, error: "the NouGenOpen bridge is not running (nougen-open serve)" }); }
+    });
+    return;
+  }
   if (port.name === "shard") {
     port.onMessage.addListener(async msg => {
       if (msg.ping) return;

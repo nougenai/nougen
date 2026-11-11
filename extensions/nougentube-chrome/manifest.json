@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NouGenTube",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "YouTube transcript, summary, chat and shards. Runs on your own models: local Ollama, the NouGenOpen free fleet, or your own provider keys.",
   "permissions": [
     "storage",
