@@ -67,7 +67,7 @@ async function* lines(r) {
 // ---- one function per wire format; each streams text through emit() and returns a receipt ----
 async function runBridge(messages, emit, signal) {
   const r = await fetch(NGO + "/v1/chat/completions", { method: "POST", signal, headers: { "content-type": "application/json" },
-    body: JSON.stringify({ model: "nougenopen/auto", messages, max_tokens: 3000, temperature: 0.3 }) });
+    body: JSON.stringify({ model: "nougenopen/auto", messages, max_tokens: 4500, temperature: 0.3 }) });
   const j = await r.json(); if (!r.ok) throw new Error("NouGenOpen " + r.status + " " + (j.error?.message || "").slice(0, 200));
   const text = j.choices?.[0]?.message?.content || ""; if (!text.trim()) throw new Error("NouGenOpen returned an empty answer");
   emit(text);
@@ -150,6 +150,15 @@ chrome.runtime.onConnect.addListener(port => {
       if (msg.ping) return;
       try { const r = await fetch(NGO + "/v1/nougen/recall", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body) });
         const j = await r.json(); port.postMessage(r.ok ? { ok: true, shards: j.shards || [], failed: j.failed || [] } : { ok: false, error: j.error?.message || ("bridge said " + r.status) });
+      } catch { port.postMessage({ ok: false, error: "the NouGenOpen bridge is not running (nougen-open serve)" }); }
+    });
+    return;
+  }
+  if (port.name === "web") {
+    port.onMessage.addListener(async msg => {
+      if (msg.ping) return;
+      try { const r = await fetch(NGO + "/v1/nougen/web", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(msg.body) });
+        const j = await r.json(); port.postMessage(r.ok ? { ok: true, results: j.results || [], providers: j.providers || [], failed: j.failed || [] } : { ok: false, error: j.error?.message || ("bridge said " + r.status) });
       } catch { port.postMessage({ ok: false, error: "the NouGenOpen bridge is not running (nougen-open serve)" }); }
     });
     return;

@@ -547,6 +547,7 @@
     app: "Design an app: who it is for, its screens or commands, the core loop, the data it stores, and which vault pieces it reuses.",
     site: "Design a website: its pages, what each page must do, the content it needs, and which vault pieces supply it.",
     skill: "Design a reusable skill or workflow: its trigger, inputs, ordered steps, outputs, stopping condition, and which vault pieces it calls." };
+  const NL = String.fromCharCode(10);
   const refOf = h => `${h.id}@db${h.db}`;
   // One whole answer from the current route (the Auto fallback applies here too).
   const ask1 = messages => new Promise((res, rej) => { let out = ""; S.onStage = null; S.onReset = () => { out = ""; };
@@ -560,7 +561,7 @@
   async function morph() {
     const custom = ($("tgc")?.value || "").trim().slice(0, 160);
     if ($("tg").value === "custom" && !custom) return $("tgc")?.focus();
-    const M = S.morph = { target: $("tg").value, custom, text: "", shards: [], prior: [], queries: [], t0: Date.now(), busy: true, err: "", vaultOff: "" };
+    const M = S.morph = { target: $("tg").value, custom, text: "", shards: [], prior: [], queries: [], t0: Date.now(), busy: true, err: "", vaultOff: "", web: [], webOff: "", webVia: "" };
     const bd = $("bd"), stage = (t, sub = "") => { if (S.tab === "morph") bd.innerHTML = loader(t, sub, M.t0); };
     renderMorph();
     try {
@@ -580,8 +581,15 @@
       // Over-fetch, then keep older vault knowledge and other saved videos as separate groups, so a run of
       // fresh video reports cannot crowd out the deeper material the plan should build on.
       const body = { queries: M.queries, limit: 5, fetch: 20, max: 60, exclude_tags: ["tube-report:" + S.vid] };
+      // The live web is searched at the same time, so the plan can be checked against what is current, not only what was saved.
+      const wbody = { queries: M.queries.slice(0, 3), limit: 5, read: 3, max: 6, max_chars: 1800, freshness: "last_year" };
+      const webP = portCall("web", { body: wbody }).then(w => w?.ok ? w : portCall("web", { body: wbody }));
       let rc = await portCall("recall", { body });
       if (!rc?.ok) rc = await portCall("recall", { body });
+      stage("Checking the latest on the web", "Searching for current sources on the same ideas.");
+      const wr = await webP;
+      if (wr?.ok) { M.web = wr.results.map((h, i) => ({ ref: "w" + (i + 1), url: h.url, title: h.title, snippet: h.snippet, text: h.text || "", matched: h.matched || [] })); M.webVia = (wr.providers || []).join(", "); }
+      else M.webOff = wr?.error || "the NouGenOpen bridge did not answer";
       if (rc?.ok) {
         M.prior = rc.shards.filter(h => (h.tags || []).includes("tube-morph:" + S.vid));
         const rest = rc.shards.filter(h => !M.prior.includes(h)), seen = new Set();
@@ -600,10 +608,13 @@
         `VAULT KNOWLEDGE (existing work, notes, code and docs):\n${list(know) || "(nothing related)"}\n\nOTHER SAVED VIDEOS (reports on different videos):\n${list(vids) || "(none related)"}`;
       const sys = `You are NouGenTube Morph. You reverse a video's intent: not "what was said" but "what this lets us build", and you build on what the user's vault of saved knowledge (shards) already holds.\n` +
         `Rules: cite a shard only by a reference that appears below, exactly as written, like [${M.shards[0] ? refOf(M.shards[0]) : "123@db4"}]. Never invent a shard. Prefer VAULT KNOWLEDGE as the thing to build on; use OTHER SAVED VIDEOS only as supporting ideas. Cite video moments as [m:ss]. If the vault has nothing relevant for a point, say so plainly. Markdown only, no intro or outro.\n\n` +
-        `VIDEO: "${vtitle()}"\n${morphSource()}\n\n${vault}`;
+        (M.web.length ? `Cite a web source only by its tag below, like [w1]. Never invent a web source or a URL.\n\n` : `\n`) +
+        `VIDEO: "${vtitle()}"\n${morphSource()}\n\n${vault}` +
+        (M.web.length ? `\n\nLATEST ON THE WEB (fetched just now; newer than the video and the vault):\n` + M.web.map(w => `[${w.ref}] ${w.title} (${w.url})\n${(w.text || w.snippet).slice(0, 1800)}`).join("\n\n") : "");
       const ask = M.target === "custom" ? `Design this: ${M.custom}. Cover its parts, how they work together, what it stores or produces, and which vault pieces it reuses.` : TARGET_ASK[M.target];
       const task = `${ask}\n\nUse exactly these sections:\n### Intent of the video\nWhat it is really teaching, restated as 3-5 capabilities someone could build, each with its [m:ss].\n` +
-        `### What the vault already has\nBullets. Each cites one shard reference and says how it connects to an intent above.\n### Morph plan\nThe design for the target above: its parts, how data moves between them, and which cited shards are reused or extended.\n` +
+        `### What the vault already has\nBullets. Each cites one shard reference and says how it connects to an intent above.\n` +
+        (M.web.length ? `### Latest on the web\nBullets. What current sources add, confirm or contradict compared with the video, each citing its [w] tag. Say plainly if something in the video looks out of date.\n` : "") + `### Morph plan\nThe design for the target above: its parts, how data moves between them, and which cited shards are reused or extended.\n` +
         `### First build steps\n5-8 ordered, concrete steps, each small enough to finish in one sitting.\n### Gaps\nWhat the vault lacks for this build and what to capture or learn next.` + (S.lng && S.lng !== "Auto" ? `\nWrite in ${S.lng}.` : "");
       S.onStage = t => { if (!M.text) stage(t); }; S.onReset = () => { M.text = ""; };
       await new Promise((res, rej) => stream([{ role: "system", content: sys }, { role: "user", content: task }],
@@ -617,11 +628,13 @@
   function morphCheck(M) {
     const known = new Set(M.shards.map(refOf)), cited = [...new Set([...M.text.matchAll(/\[(\d+@db\d+)\]/g)].map(m => m[1]))];
     const bad = cited.filter(c => !known.has(c)), c = check(M.text);
-    return { cited, bad, ts: c.ts, badTs: c.bad };
+    const wk = new Set((M.web || []).map(w => w.ref)), wc = [...new Set([...M.text.matchAll(/\[(w\d+)\]/g)].map(m => m[1]))];
+    return { cited, bad, ts: c.ts, badTs: c.bad, web: wc, badWeb: wc.filter(x => !wk.has(x)), missing: ["Intent of the video", "Morph plan", "First build steps", "Gaps"].filter(h => !M.text.includes(h)) };
   }
   function morphDoc(M) {
     const k = morphCheck(M);
     return `${vtitle()} - YouTube\nhttps://www.youtube.com/watch?v=${S.vid}\nMorph target: ${tname(M)}\n\n${M.text.trim()}\n\n### Automatic check\n- Shards cited: ${k.cited.length}; not returned by the vault: ${k.bad.length ? k.bad.join(", ") : "none"}\n- Timestamps cited: ${k.ts}; outside the video: ${k.badTs.length ? k.badTs.join(", ") : "none"}\n\n` +
+      `### Web sources fetched${M.webVia ? " (" + M.webVia + ")" : ""}${NL}${(M.web || []).map(w => `- [${w.ref}] ${w.title} ${w.url}`).join(NL) || "- none"}${NL}- Web sources cited: ${k.web.length}; not among those fetched: ${k.badWeb.length ? k.badWeb.join(", ") : "none"}${NL}${NL}` +
       `### Vault shards cross-referenced\n${M.shards.map(h => `- [${refOf(h)}] ${h.title}${h.kind === "video" ? " [other saved video]" : ""} (matched: ${h.matched.join("; ")})`).join("\n") || "- none"}\n\n### Search phrases\n${M.queries.map(q => "- " + q).join("\n")}\n`;
   }
   function renderMorph() {
@@ -635,13 +648,18 @@
     if (!M?.text) { bd.innerHTML = `<div class="mu">Morph reverses the video's intent: it names what the video lets you build, looks up related shards in your vault, and writes a plan that builds on what you already have. Pick a target and press Morph.</div>${S.bridge ? "" : `<div class="mu">The NouGenOpen bridge is not running, so the vault cannot be read. Morph will still write a plan from the video alone. Start <b>nougen-open serve</b> to build on your shards.</div>`}`; return; }
     const k = morphCheck(M), row = (ok, t) => `<div class="vr"><span class="${ok ? "vok" : "vno"}">${ok ? "✓" : "!"}</span><span>${t}</span></div>`;
     const kn = M.shards.filter(h => h.kind !== "video"), vd = M.shards.filter(h => h.kind === "video");
+    const W = M.web || [], wmap = Object.fromEntries(W.map(w => [w.ref, w]));
+    const wlink = h => h.replace(/\[(w\d+)\]/g, (m, r) => wmap[r] ? `<a href="${esc(wmap[r].url)}" target="_blank" rel="noopener" title="${esc(wmap[r].title)}">[${r}]</a>` : m);
+    const wgrp = W.length ? `<div class="mu" style="padding:6px 0 2px">Latest on the web${M.webVia ? " (" + esc(M.webVia) + ")" : ""}</div>` + W.map(w => `<div class="vr"><span class="vok">${w.ref}</span><span><a href="${esc(w.url)}" target="_blank" rel="noopener">${esc(w.title || w.url)}</a></span></div>`).join("") : "";
     const grp = (t, a) => a.length ? `<div class="mu" style="padding:6px 0 2px">${t}</div>` + a.map(h => `<div class="vr"><span class="vok">${esc(refOf(h))}</span><span>${esc(h.title)}</span></div>`).join("") : "";
     bd.innerHTML = `<div class="acts"><span class="chip on" id="mc">Copy morph plan</span><span class="chip" id="mb" title="Copy the plan as a prompt you can paste into a coding agent">Copy build prompt</span><span class="chip" id="ms" title="Save this plan to NouGenShards">Shard it</span></div>` +
       (M.prior.length ? `<div class="mu">This video was morphed before: ${M.prior.map(h => esc(refOf(h))).join(", ")}.</div>` : "") +
-      `<details class="vf"><summary class="vh" style="cursor:pointer">${M.vaultOff ? "Vault not read for this plan" : `Cross-referenced ${kn.length} vault shard${kn.length === 1 ? "" : "s"} and ${vd.length} other saved video${vd.length === 1 ? "" : "s"}`}</summary>${M.vaultOff ? `<div class="mu" style="padding:4px 0">${esc(M.vaultOff)}. Start the bridge and press Morph again to build on your shards.</div>` : (grp("Vault knowledge", kn) + grp("Other saved videos", vd) || `<div class="mu" style="padding:4px 0">The vault returned nothing related to this video.</div>`)}</details>` +
-      `<div class="md">${md(M.text)}</div><div class="vf"><div class="vh">Checked against your vault and the transcript</div>` +
+      `<details class="vf"><summary class="vh" style="cursor:pointer">${M.vaultOff ? "Vault not read for this plan" : `Cross-referenced ${kn.length} vault shard${kn.length === 1 ? "" : "s"} and ${vd.length} other saved video${vd.length === 1 ? "" : "s"}`}${W.length ? `, ${W.length} web source${W.length === 1 ? "" : "s"}` : ""}</summary>${M.vaultOff ? `<div class="mu" style="padding:4px 0">${esc(M.vaultOff)}. Start the bridge and press Morph again to build on your shards.</div>` + wgrp : (grp("Vault knowledge", kn) + grp("Other saved videos", vd) + wgrp || `<div class="mu" style="padding:4px 0">The vault returned nothing related to this video.</div>`)}</details>` +
+      `<div class="md">${wlink(md(M.text))}</div><div class="vf"><div class="vh">Checked against your vault, the web and the transcript</div>` +
       (M.vaultOff ? row(false, "The vault could not be read, so this plan is built from the video alone") : "") + row(!k.bad.length, k.bad.length ? `${k.bad.length} cited shard${k.bad.length === 1 ? " is" : "s are"} not among those the vault returned: ${esc(k.bad.join(", "))}` : `${k.cited.length} shard${k.cited.length === 1 ? "" : "s"} cited, all returned by the vault`) +
       (!k.cited.length && M.shards.length ? row(false, "The plan cites no vault shards, so it does not yet build on what you have") : "") +
+      (k.missing.length ? row(false, "The plan looks cut off. Missing: " + esc(k.missing.join(", ")) + ". Press Morph again, or pick another model") : "") +
+      (M.webOff ? row(false, "The web could not be searched for this plan: " + esc(M.webOff)) : W.length ? row(!k.badWeb.length, k.badWeb.length ? `${k.badWeb.length} cited web source${k.badWeb.length === 1 ? " is" : "s are"} not among those fetched: ${esc(k.badWeb.join(", "))}` : `${k.web.length} of ${W.length} fetched web sources cited, all real`) : "") +
       row(!k.badTs.length, k.badTs.length ? `${k.badTs.length} timestamps fall outside the video` : `${k.ts} timestamps cited, all inside the video`) + `</div>`;
     $("mc").onclick = () => navigator.clipboard.writeText(morphDoc(M)).then(() => { const e = $("mc"); e.textContent = "Copied ✓"; setTimeout(() => { if (e.isConnected) e.textContent = "Copy morph plan"; }, 1300); });
     $("mb").onclick = () => navigator.clipboard.writeText(["Build what this plan describes. Work through First build steps in order, one step at a time, and report after each. Recall each cited shard from NouGenShards by its reference before reusing it, and treat Gaps as open questions to resolve, not as work to invent.", "", morphDoc(M)].join(String.fromCharCode(10))).then(() => { const e = $("mb"); e.textContent = "Copied ✓"; setTimeout(() => { if (e.isConnected) e.textContent = "Copy build prompt"; }, 1300); });
