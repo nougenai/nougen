@@ -81,16 +81,18 @@
         raf = 0;
         if (done) return;
         if (curVid() !== vid) return finish(null);           // viewer moved on
-        if (document.hidden) return;                          // YouTube renders nothing off-screen
+        if (document.hidden) return setStage("Waiting for this tab to be visible");   // YouTube renders nothing off-screen
         const rows = readRows();
         const fresh = rows.length && rows[0].text !== lastFirst;
         if (fresh) {
+          setStage(`Reading ${rows.length} lines`);
           if (rows.length !== lastCount) { lastCount = rows.length; stableSince = performance.now(); }
           else if (performance.now() - stableSince > 500) return finish(rows);
           return;
         }
         const b = document.querySelector(BTN);
-        if (b && performance.now() - clickedAt > 4000) { clickedAt = performance.now(); b.click(); }
+        if (b && performance.now() - clickedAt > 4000) { clickedAt = performance.now(); b.click(); setStage("Opening YouTube's transcript"); }
+        else if (!b) setStage("Waiting for YouTube's page");
       };
       const kick = () => { if (!raf) raf = requestAnimationFrame(step); };
       const obs = new MutationObserver(kick);
@@ -145,6 +147,23 @@
   .md a.t{color:var(--ac2);cursor:pointer;text-decoration:none;font-variant-numeric:tabular-nums}
   .mu{color:var(--mu);font-size:12px;padding:10px 14px}
   .go{background:linear-gradient(135deg,var(--ac),#5b8cff);color:#fff;border:0;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+  .ld{padding:12px 14px}
+  .lst{display:flex;align-items:center;gap:8px;color:var(--mu);font-size:12.5px}.lst b{color:var(--tx);font-weight:600}
+  .lst .el{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mu)}
+  .bar{height:3px;border-radius:3px;background:var(--ln);overflow:hidden;position:relative;margin:10px 0 6px}
+  .bar::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,var(--ac),var(--ac2),transparent);animation:ngt-slide 1.2s ease-in-out infinite}
+  @keyframes ngt-slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+  .spin{width:14px;height:14px;flex:none;border:2px solid color-mix(in srgb,var(--ac) 30%,transparent);border-top-color:var(--ac);border-radius:50%;animation:ngt-rot .8s linear infinite;display:inline-block;vertical-align:-2px}
+  .go .spin{border-color:rgba(255,255,255,.35);border-top-color:#fff;margin-right:6px}
+  @keyframes ngt-rot{to{transform:rotate(360deg)}}
+  .skel{height:11px;border-radius:6px;margin:12px 14px;background:linear-gradient(90deg,var(--card) 0%,var(--ln) 50%,var(--card) 100%);background-size:200% 100%;animation:ngt-sh 1.3s linear infinite}
+  .skel.ts{width:38px;display:inline-block;margin:0 0 0 14px}
+  @keyframes ngt-sh{to{background-position:-200% 0}}
+  .dots span{display:inline-block;width:6px;height:6px;margin:0 2px;border-radius:50%;background:var(--mu);animation:ngt-bo 1s infinite}
+  .dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+  @keyframes ngt-bo{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+  .tail{padding:2px 14px 10px}
+  @media (prefers-reduced-motion:reduce){.bar::after,.spin,.skel,.dots span{animation:none}}
   .msg{margin:8px 12px;padding:8px 12px;border-radius:10px;background:var(--card)}.msg.u{background:color-mix(in srgb,var(--ac) 20%,transparent);margin-left:40px}
   .ft{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--ln)}.ft input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:7px 10px}
   .err{color:#f87171}`;
@@ -194,12 +213,32 @@
     return m ? `<div class="md mmw">${m}<div class="mu">${esc(foot)}</div></div>` : `<div class="md">${md(t)}</div>`; }
   function prefs() { chrome.storage.sync.set({ sty: S.sty, len: S.len, lng: S.lng, custom: S.custom }); }
 
+  // Honest progress: a real stage name plus elapsed seconds, never a made-up percentage.
+  function loader(stage, sub = "", t0 = Date.now()) {
+    return `<div class="ld"><div class="lst"><span class="spin"></span><b>${esc(stage)}</b><span class="el" data-t0="${t0}">0s</span></div>
+      <div class="bar"></div>${sub ? `<div class="mu" style="padding:0">${esc(sub)}</div>` : ""}</div>`;
+  }
+  const DOTS = '<span class="dots" aria-label="Thinking"><span></span><span></span><span></span></span>';
+  const WRITING = '<div class="tail lst"><span class="spin"></span>Writing…</div>';
+  setInterval(() => { if (!root) return; root.querySelectorAll(".el[data-t0]").forEach(e => {
+    const s = Math.max(0, Math.round((Date.now() - +e.dataset.t0) / 1000)); e.textContent = s < 60 ? s + "s" : (s / 60 | 0) + "m " + (s % 60) + "s"; }); }, 500);
+  function transcriptLoading() {
+    const skel = [92, 78, 85, 64, 88, 70].map(w => `<div><span class="skel ts"></span><div class="skel" style="width:calc(${w}% - 80px);margin-left:66px;margin-top:-11px"></div></div>`).join("");
+    const stage = document.hidden ? "Waiting for this tab to be visible" : (S.tStage || "Loading transcript");
+    const sub = document.hidden ? "YouTube only builds the transcript while the tab is on screen." : "";
+    return loader(stage, sub, S.tT0) + skel;
+  }
+  function setStage(stage) {
+    if (S.tStage === stage) return; S.tStage = stage;
+    if (root && !S.lines.length && !S.err && S.tab === "transcript") { const bd = $("bd"); if (bd) bd.innerHTML = transcriptLoading(); }
+  }
+
   function render() {
     if (!root) return;
     root.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === S.tab));
     const tb = $("tb"), bd = $("bd"), ft = $("ft"); ft.innerHTML = ""; tb.innerHTML = ""; tb.hidden = false;
     if (S.err) { bd.innerHTML = `<div class="mu err">${esc(S.err)}</div><div class="mu"><button class="go" id="rt">Retry</button></div>`; $("rt").onclick = () => { S.vid = null; load(); }; return; }
-    if (!S.lines.length) { bd.innerHTML = `<div class="mu">${document.hidden ? "Waiting for this tab to be visible (YouTube only renders transcripts on screen)…" : "Loading transcript…"}</div>`; return; }
+    if (!S.lines.length) { bd.innerHTML = transcriptLoading(); return; }
     if (S.tab === "transcript") {
       tb.innerHTML = `<input id="q" placeholder="Search transcript…" value="${esc(S.q || "")}"><span class="chip ${S.follow ? "on" : ""}" id="fl" title="Auto-scroll with the video">Follow</span><span class="mu" style="padding:0">${S.lang || ""}</span>`;
       $("q").oninput = e => { S.q = e.target.value; drawLines(); }; $("fl").onclick = () => { S.follow = !S.follow; render(); };
@@ -219,7 +258,7 @@
     } else if (S.tab === "chat") {
       tb.innerHTML = modelPicker() + `<span class="chip" data-p="What are the main takeaways?">Takeaways</span><span class="chip" data-p="List every tool, product or resource mentioned, with timestamps.">Resources</span><span class="chip" data-p="What claims here might be wrong or need checking?">Fact-check</span>`;
       wirePicker(); tb.querySelectorAll("[data-p]").forEach(c => c.onclick = () => ask(c.dataset.p));
-      bd.innerHTML = S.chat.map(m => `<div class="msg ${m.role === "user" ? "u" : ""}">${m.role === "user" ? esc(m.content) : md(m.content)}</div>`).join("") || `<div class="mu">Ask anything about this video. Answers cite timestamps.</div>`;
+      bd.innerHTML = S.chat.map(m => `<div class="msg ${m.role === "user" ? "u" : ""}">${m.role === "user" ? esc(m.content) : (m.content ? md(m.content) : DOTS)}</div>`).join("") || `<div class="mu">Ask anything about this video. Answers cite timestamps.</div>`;
       ft.innerHTML = `<div class="ft"><input id="ci" placeholder="Ask about this video…"><button class="go" id="cs">Send</button></div>`;
       const go = () => { const v = $("ci").value.trim(); if (v) ask(v); }; $("cs").onclick = go; $("ci").onkeydown = e => e.key === "Enter" && go();
       bd.scrollTop = bd.scrollHeight;
@@ -288,7 +327,7 @@
   // Long video: map chunk notes in parallel across the free fleet, then reduce with the chosen style.
   async function mapNotes(bd) {
     const cs = chunks(S.lines);
-    bd.innerHTML = `<div class="mu">Long video: mapping ${cs.length} topic chunks across the NouGenOpen free fleet in parallel…</div>`;
+    bd.innerHTML = loader(`Mapping ${cs.length} topic chunks in parallel`, "Long video: each part is summarized on a free-fleet lane, then combined.", S.sT0);
     const sys = `You take grounded notes on one part of the YouTube video "${vtitle()}". Only facts the speaker states. Keep every useful [m:ss] timestamp.`;
     const prompts = cs.map((c, i) => `Part ${i + 1}/${cs.length} (${fmt(c.from)}-${fmt(c.to)}). Write 4-8 terse bullet notes, each ending with its [m:ss].\n\n${c.text}`);
     const r = await new Promise(res => { const p = chrome.runtime.connect({ name: "map" }); const ka = setInterval(() => { try { p.postMessage({ ping: 1 }); } catch {} }, 15000);
@@ -302,13 +341,18 @@
   async function summarize() {
     S.summary = ""; S.sty = $("sty").value; S.len = $("len").value; S.lng = $("lng").value;
     if (S.sty === "custom" && !(S.custom || "").trim()) return $("cp2")?.focus();
-    const task = (S.sty === "custom" ? S.custom : STY[S.sty]) + " " + (S.sty === "mindmap" || S.sty === "chapters" ? "" : LEN[S.len]) + (S.lng !== "Auto" ? ` Write the answer in ${S.lng}.` : ""); render(); const bd = $("bd"), b = $("gen"); b.disabled = true; b.textContent = "Thinking…";
+    const task = (S.sty === "custom" ? S.custom : STY[S.sty]) + " " + (S.sty === "mindmap" || S.sty === "chapters" ? "" : LEN[S.len]) + (S.lng !== "Auto" ? ` Write the answer in ${S.lng}.` : ""); render(); const bd = $("bd"), b = $("gen"); b.disabled = true; b.innerHTML = '<span class="spin"></span>Working'; S.sT0 = Date.now();
+    const m = S.model || "";
+    bd.innerHTML = m.startsWith("nougenopen:") ? loader("Asking the NouGenOpen free fleet", "", S.sT0)
+      : m.startsWith("nvidia:") ? loader("Waiting for NVIDIA", "The free endpoint can queue; it gives up after 90s.", S.sT0)
+      : loader(`Running locally on ${m}`, "The first request after a while also loads the model into memory.", S.sT0);
     let sys = SYS(); S.mapInfo = "";
     if (S.model === "nougenopen:auto" && fullLen() > 14000) {
       try { const notes = await mapNotes(bd);
+        bd.innerHTML = loader("Combining the notes into your summary", S.mapInfo, S.sT0);
         sys = `You are NouGenTube, writing about the YouTube video "${vtitle()}". Below are grounded, timestamped notes covering the whole video in order. Use only these notes; keep [m:ss] timestamps. Markdown only.\n\nNOTES:\n${notes}`;
       } catch (e) { S.summary = "⚠ " + e.message; b.disabled = false; b.textContent = "Regenerate"; return render(); } }
-    stream([{ role: "system", content: sys }, { role: "user", content: task }], d => { S.summary += d; if (S.tab === "summary") bd.innerHTML = show(S.summary); },
+    stream([{ role: "system", content: sys }, { role: "user", content: task }], d => { S.summary += d; if (S.tab === "summary") bd.innerHTML = show(S.summary) + WRITING; },
       (e, fin) => { S.summary += e; if (fin) S.summary += `\n\n— ${fin.model}, ${fin.tokens} tokens, ${fin.where}${S.mapInfo ? " · map: " + S.mapInfo : ""}`; save(); render(); });
   }
   function ask(q) {
@@ -345,7 +389,7 @@
     if (location.pathname !== "/watch" || !vid) { host?.remove(); host = null; return; }
     if (!mount()) return setTimeout(load, 500);
     if (vid === S.vid) return;
-    Object.assign(S, { vid, lines: [], paras: [], err: null, summary: "", chat: [], hl: {}, q: "" }); render();
+    Object.assign(S, { vid, lines: [], paras: [], err: null, summary: "", chat: [], hl: {}, q: "", tT0: Date.now(), tStage: "" }); render();
     const st = (await chrome.storage.local.get(key()))[key()]; if (st) Object.assign(S, st);
     Object.assign(S, await chrome.storage.sync.get(["sty", "len", "lng", "custom"])); render();
     try {
