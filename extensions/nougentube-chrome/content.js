@@ -282,8 +282,8 @@
     root.getElementById("hs").onclick = () => shardIt("hs");
     root.getElementById("th").onclick = () => { const i = THEMES.indexOf(S.theme || "auto"); S.theme = THEMES[(i + 1) % THEMES.length];
       chrome.storage.sync.set({ theme: S.theme }); applyTheme(); toast("Theme: " + THEME_NAMES[S.theme]); };
-    chrome.storage.sync.get("theme").then(v => { S.theme = v.theme || "auto"; applyTheme(); });
-    chrome.storage.onChanged.addListener((ch, area) => { if (area === "sync" && ch.theme) { S.theme = ch.theme.newValue || "auto"; applyTheme(); } });
+    chrome.storage.sync.get(["theme", "keepAwake"]).then(v => { S.theme = v.theme || "auto"; S.keepAwake = v.keepAwake !== false; applyTheme(); });
+    chrome.storage.onChanged.addListener((ch, area) => { if (area !== "sync") return; if (ch.keepAwake) S.keepAwake = ch.keepAwake.newValue !== false; if (ch.theme) { S.theme = ch.theme.newValue || "auto"; applyTheme(); } });
     new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["dark"] });
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);   // the system changed while the page is open
     if (!mount.watching) {   // the window or zoom changed: YouTube may have switched between one and two columns
@@ -370,7 +370,7 @@
     if (S.tab === "transcript") {
       tb.innerHTML = `<input id="q" placeholder="Search transcript…" value="${esc(S.q || "")}"><span class="chip ${S.follow ? "on" : ""}" id="fl" title="Auto-scroll with the video">Follow</span><select id="trl" title="Show the transcript in another language, translated by your model">${"<option value=\"\">" + (S.tr ? "Original language" : "Translate…") + "</option>"}${LANGS.filter(l => l !== "Auto").map(l => `<option ${S.tr && S.tr.lang === l ? "selected" : ""}>${l}</option>`).join("")}</select>${S.lang === "audio" ? `<span class="chip" title="This transcript was made by speech-to-text on this computer, so names and numbers may be wrong">from audio</span>` : ""}${S.lang === "saved" ? `<span class="chip" id="rl" title="This transcript was saved from an earlier visit. Click to fetch it from YouTube again.">saved ↻</span>` : `<span class="mu" style="padding:0">${S.lang || ""}</span>`}`;
       if ($("rl")) $("rl").onclick = () => { S.vid = null; S.fresh = true; load(); };
-      $("q").oninput = e => { S.q = e.target.value; drawLines(); }; $("fl").onclick = () => { S.follow = !S.follow; render(); }; tb.style.flexWrap = "wrap"; $("trl").onchange = e => translateTranscript(e.target.value);
+      $("q").oninput = e => { S.q = e.target.value; drawLines(); }; $("fl").onclick = () => { S.follow = !S.follow; render(); }; tb.style.flexWrap = "wrap"; $("trl").onchange = e => (e.target.value ? withAwake(() => translateTranscript(e.target.value)) : translateTranscript(""));
       drawLines();
     } else if (S.tab === "summary") {
       tb.style.flexWrap = "wrap";
@@ -592,6 +592,7 @@
     const custom = ($("tgc")?.value || "").trim().slice(0, 160);
     if ($("tg").value === "custom" && !custom) return $("tgc")?.focus();
     const M = S.morph = { target: $("tg").value, custom, text: "", shards: [], prior: [], queries: [], t0: Date.now(), busy: true, err: "", vaultOff: "", web: [], webOff: "", webVia: "", v21: true };
+    const release = holdAwake();
     const bd = $("bd"), stage = (t, sub = "") => { if (S.tab === "morph") bd.innerHTML = loader(t, sub, M.t0); };
     renderMorph();
     try {
@@ -652,7 +653,7 @@
         (e, fin) => { if (e) return rej(new Error(e.replace(/^[\s⚠]+/, "")));
           M.text += `\n\n— ${fin.model}, ${fin.tokens} tokens, ${Math.round((Date.now() - M.t0) / 1000)}s, ${fin.where}${fin.failed && fin.failed.length ? ` · after ${fin.failed.length} failed route${fin.failed.length === 1 ? "" : "s"}` : ""}`; res(); }));
     } catch (e) { M.err = String(e.message || e); }
-    M.busy = false; save(); renderMorph();
+    release(); M.busy = false; save(); renderMorph();
   }
   // Shards cited must be ones the vault returned, web tags ones the search found, all 21 steps present in order, timestamps inside the video.
   function morphCheck(M) {
@@ -708,7 +709,7 @@
     S.onReset = () => { S.summary = ""; };
     let sys = SYS(); S.mapInfo = "";
     if ((S.model === "nougenopen:auto" || (S.model === "auto" && S.bridge)) && fullLen() > 14000) {
-      try { const notes = await mapNotes(bd);
+      try { const notes = await withAwake(() => mapNotes(bd));
         bd.innerHTML = loader("Combining the notes into your summary", S.mapInfo, S.sT0);
         sys = `You are NouGenTube, writing about the YouTube video "${vtitle()}". Below are grounded, timestamped notes covering the whole video in order. Use only these notes; keep [m:ss] timestamps. When you quote, use only passages that appear inside double quotes on the QUOTE: lines, exactly as written. Markdown only.\n\nNOTES:\n${notes}`;
       } catch (e) { if (S.model === "auto") { sys = SYS(); S.mapInfo = ""; bd.innerHTML = loader("Finding the best available route", "", S.sT0); } else { S.summary = "⚠ " + e.message; b.disabled = false; b.textContent = "Regenerate"; return render(); } } }
@@ -781,6 +782,22 @@
   }
 
   // ---------- Batch: many videos or a playlist, one summary each (NoteGPT: "batch summarize up to 20 videos") ----------
+  // Keeps the computer awake (not the screen) while a long job runs; the returned function lets go. The hold lives in the
+  // background page and ends the moment this port does. Pings keep that page alive; a dropped port is opened again.
+  function holdAwake() {
+    if (S.keepAwake === false) return () => {};
+    let port = null, done = false, ka = null;
+    const open = () => {
+      if (done) return;
+      try { port = chrome.runtime.connect({ name: "awake" }); } catch { return; }
+      port.postMessage({ start: "prevent-app-suspension" });
+      clearInterval(ka); ka = setInterval(() => { try { port.postMessage({ ping: 1 }); } catch {} }, 15000);
+      port.onDisconnect.addListener(() => { clearInterval(ka); if (!done) setTimeout(open, 1000); });
+    };
+    open();
+    return () => { done = true; clearInterval(ka); try { if (port) port.disconnect(); } catch {} };
+  }
+  const withAwake = async fn => { const release = holdAwake(); try { return await fn(); } finally { release(); } };
   const tubeCall = (kind, body) => portCall("tube", { kind, body });
   const BATCH_MAX = 20, BATCH_STYLES = ["brief", "tldr", "deep", "intel", "chapters", "steps"];
   const idOf = s => { const m = String(s).match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([A-Za-z0-9_-]{11})/) || String(s).trim().match(/^([A-Za-z0-9_-]{11})$/); return m ? m[1] : null; };
@@ -829,12 +846,13 @@
   async function runBatch() {
     const B = S.bt; if (B.running) return;
     B.running = true; B.stop = false; btPaint();
+    const release = holdAwake();
     for (const it of B.items) {
       if (B.stop) break;
       if (it.status !== "queued" && it.status !== "error") continue;
       try { await batchOne(it); } catch (e) { it.status = "error"; it.err = String(e.message || e).replace(/^[\s⚠]+/, ""); it.stage = ""; btSave(); btPaint(); }
     }
-    B.running = false; btSave(); btPaint();
+    release(); B.running = false; btSave(); btPaint();
   }
   async function batchAdd(text) {
     const B = S.bt, notes = [], have = new Set(B.items.map(i => i.id));
@@ -882,7 +900,7 @@
       '<textarea id="bl" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg);color:inherit;border:1px solid var(--ln);border-radius:var(--r);padding:8px;font:inherit" placeholder="Paste YouTube links, one per line (up to ' + BATCH_MAX + '), or a playlist link">' + esc(B.draft || "") + "</textarea>" +
       '<div class="acts"><span class="chip on" id="ba">Add links</span><span class="chip" id="bc">Add this video</span><span class="chip" id="bp" title="Add every video of the playlist this video was opened from">Add this playlist</span></div>' +
       (B.notes ? '<div class="mu">' + esc(B.notes) + "</div>" : "") +
-      (B.items.length ? '<div style="margin:8px 0 4px;height:4px;background:var(--ln);border-radius:2px"><div style="height:4px;width:' + pct + '%;background:var(--ac);border-radius:2px"></div></div><div class="mu" style="font-size:12px">' + done + " of " + B.items.length + " done" + (errs ? ", " + errs + " failed" : "") + "</div>" : '<div class="mu">Each video gets its own summary. Videos without captions are transcribed from their audio on this computer (up to 150 minutes each).</div>') +
+      (B.items.length ? '<div style="margin:8px 0 4px;height:4px;background:var(--ln);border-radius:2px"><div style="height:4px;width:' + pct + '%;background:var(--ac);border-radius:2px"></div></div><div class="mu" style="font-size:12px">' + done + " of " + B.items.length + " done" + (errs ? ", " + errs + " failed" : "") + (B.running && S.keepAwake !== false ? " · keeping this computer awake" : "") + "</div>" : '<div class="mu">Each video gets its own summary. Videos without captions are transcribed from their audio on this computer (up to 150 minutes each).</div>') +
       B.items.map(row).join("") +
       (done ? '<div class="acts" style="margin-top:8px"><span class="chip on" id="bcopy">Copy all summaries</span><span class="chip" id="bshall">Shard unsaved</span><span class="chip" id="bclr">Clear</span></div>' : B.items.length ? '<div class="acts" style="margin-top:8px"><span class="chip" id="bclr">Clear</span></div>' : "");
     $("bl").oninput = e => { B.draft = e.target.value; };
@@ -978,7 +996,7 @@
       S.audioErr = "";
       if (!r && !gone() && S.bridge) {
         setStage("Transcribing the audio on this computer. A long video can take a few minutes");
-        const t = await tubeCall("transcript", { video_id: vid, audio: "auto", max_minutes: 150 });
+        const t = await withAwake(() => tubeCall("transcript", { video_id: vid, audio: "auto", max_minutes: 150 }));
         if (t && t.ok && t.lines && t.lines.length) r = { lines: t.lines, lang: t.source === "whisper" ? "audio" : "bridge" };
         else S.audioErr = (t && t.error) || "the bridge did not answer";
       }

@@ -2,11 +2,14 @@
 // local Ollama, and any provider the user has added a key for (Claude, OpenAI, Gemini,
 // DeepSeek, OpenRouter, NVIDIA, or a custom OpenAI-compatible endpoint). "Auto" walks the
 // routes in order and moves to the next one when a route fails or stays silent.
-importScripts("providers.js");
+importScripts("providers.js", "power-core.js");
 
 const DEF = { host: "http://localhost:11434", model: "auto", localModel: "gemma4:e2b-qat", autoOrder: "free" };
 const NGO = "http://127.0.0.1:8765";   // nougen-open serve
 const IDLE_MS = globalThis.NG_IDLE_MS ?? 90000;   // max silence between chunks once text has started
+// Long jobs in the panel (a batch, a Morph, a translation, audio transcription) keep the computer awake, never the screen.
+const blocker = createPowerBlocker(chrome.power);
+blocker.reset();   // a worker that starts holds nothing, so let go of anything a dead one left in the system
 
 async function cfg() {
   const sync = await chrome.storage.sync.get(["host", "model", "localModel", "autoOrder"]);
@@ -140,6 +143,12 @@ async function autoRoutes(c) {
 }
 
 chrome.runtime.onConnect.addListener(port => {
+  if (port.name === "awake") {   // one open port = one hold; it ends when the panel goes away, however the job ended
+    let id = null;
+    port.onMessage.addListener(msg => { if (msg && msg.start && id === null) { try { id = blocker.start(msg.start); } catch { /* unknown type: hold nothing */ } } });
+    port.onDisconnect.addListener(() => { if (id !== null) blocker.stop(id); id = null; });
+    return;
+  }
   // Request/response ports to the bridge. As in Electron's MessagePorts model, a closed port is a signal to settle:
   // when the panel goes away (closed, or navigated to another video) the request is aborted and nothing is posted back.
   const BRIDGE = {

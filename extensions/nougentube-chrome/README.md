@@ -64,6 +64,9 @@ Following Electron's nativeTheme model, "Auto" matches YouTube's own theme when 
 
 Accessibility follows the system too. With high contrast on (`prefers-contrast: more`) borders switch to the strong border colour and secondary text to full strength; in Windows forced-colors mode every control gets a visible system-colour border and the selected tab or action a highlight outline.
 
+## Long jobs keep the computer awake
+From Electron's powerSaveBlocker. A batch, a Morph, a translation, audio transcription or a long summary holds a "keep the system awake" request (never the screen) for as long as it runs, so a laptop does not sleep halfway through. The hold is one open connection to the background page: when the job ends, the panel closes, the tab navigates away or the page crashes, the connection closes and the hold is released. `power-core.js` keeps Electron's model on top of `chrome.power`: `start(type)` returns an id, `stop(id)` says whether it stopped, blockers overlap, and a stronger type wins until it stops. A worker that starts always lets go of any hold a dead one left behind. Switch it off under "Long jobs" in settings. It needs the `power` permission.
+
 ## Windows, displays and links
 Three more lessons from Electron's system-preferences, screen and shell docs, applied the browser way:
 - **Fit the space you actually have.** YouTube hides its side column in the one-column layout (a narrow window, or a high browser zoom). The panel used to vanish with it; it now sits under the player there, moves back when the window widens again, and is capped at 1400 px on very tall displays. Checked at 1280x560, 1920x1080 at 1x and 2x, 3840x2160 and 900x800.
