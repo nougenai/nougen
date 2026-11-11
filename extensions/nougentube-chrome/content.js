@@ -431,7 +431,7 @@
     const cs = chunks(S.lines);
     bd.innerHTML = loader(`Mapping ${cs.length} topic chunks in parallel`, "Long video: each part is summarized on a free-fleet lane, then combined.", S.sT0);
     const sys = `You take grounded notes on one part of the YouTube video "${vtitle()}". Only facts the speaker states. Keep every useful [m:ss] timestamp.`;
-    const prompts = cs.map((c, i) => `Part ${i + 1}/${cs.length} (${fmt(c.from)}-${fmt(c.to)}). Write 4-8 terse bullet notes, each ending with its [m:ss].\n\n${c.text}`);
+    const prompts = cs.map((c, i) => `Part ${i + 1}/${cs.length} (${fmt(c.from)}-${fmt(c.to)}). Write 4-8 terse bullet notes, each ending with its [m:ss]. Then add one line starting with QUOTE: holding one short passage copied word for word from this part, in double quotes, followed by its [m:ss].\n\n${c.text}`);
     const r = await new Promise(res => { const p = chrome.runtime.connect({ name: "map" }); const ka = setInterval(() => { try { p.postMessage({ ping: 1 }); } catch {} }, 15000);
       p.onMessage.addListener(m => { clearInterval(ka); res(m); p.disconnect(); }); p.onDisconnect.addListener(() => { clearInterval(ka); res({ ok: false, error: "background stopped" }); }); p.postMessage({ prompts, system: sys }); });
     if (!r?.ok) throw new Error(r?.error || "map failed");
@@ -454,9 +454,9 @@
     const c = check(text), okQ = c.q.filter(x => x.ok).length, missed = c.q.filter(x => !x.ok);
     const row = (ok, t) => `<div class="vr"><span class="${ok ? "vok" : "vno"}">${ok ? "✓" : "!"}</span><span>${t}</span></div>`;
     return `<div class="vf"><div class="vh">Checked against the transcript</div>` +
-      (c.q.length ? row(!missed.length, `${okQ} of ${c.q.length} quoted passages appear word for word`) : row(true, "No quoted passages to check")) +
+      (c.q.length ? row(!missed.length, `${okQ} of ${c.q.length} quoted passages appear word for word`) : row(S.sty !== "intel", S.sty === "intel" ? "The report contains no quoted passages, although the format asks for 2-3" : "No quoted passages to check")) +
       missed.map(m => row(false, `Not in the transcript as written: “${esc(m.x.slice(0, 110))}${m.x.length > 110 ? "…" : ""}”`)).join("") +
-      row(!c.bad.length, c.bad.length ? `${c.bad.length} of ${c.ts} timestamps fall outside the video: ${esc(c.bad.join(", "))}` : `${c.ts} timestamps cited, all inside the video`) +
+      row(!c.bad.length && (c.ts > 0 || S.sty !== "intel"), c.bad.length ? `${c.bad.length} of ${c.ts} timestamps fall outside the video: ${esc(c.bad.join(", "))}` : (c.ts ? `${c.ts} timestamps cited, all inside the video` : "No timestamps cited, so nothing can be traced back to the video")) +
       `<div class="mu" style="padding:6px 0 0">This checks wording and times only. Whether the speaker's claims are true still needs outside sources.</div></div>`;
   }
   function checkText(text) {
@@ -503,7 +503,7 @@
     if (S.model === "nougenopen:auto" && fullLen() > 14000) {
       try { const notes = await mapNotes(bd);
         bd.innerHTML = loader("Combining the notes into your summary", S.mapInfo, S.sT0);
-        sys = `You are NouGenTube, writing about the YouTube video "${vtitle()}". Below are grounded, timestamped notes covering the whole video in order. Use only these notes; keep [m:ss] timestamps. Markdown only.\n\nNOTES:\n${notes}`;
+        sys = `You are NouGenTube, writing about the YouTube video "${vtitle()}". Below are grounded, timestamped notes covering the whole video in order. Use only these notes; keep [m:ss] timestamps. When you quote, use only passages that appear inside double quotes on the QUOTE: lines, exactly as written. Markdown only.\n\nNOTES:\n${notes}`;
       } catch (e) { S.summary = "⚠ " + e.message; b.disabled = false; b.textContent = "Regenerate"; return render(); } }
     stream([{ role: "system", content: sys }, { role: "user", content: task }], d => { S.summary += d; if (S.tab === "summary") bd.innerHTML = show(S.summary) + WRITING; },
       (e, fin) => { S.summary += e; if (fin) S.summary += `\n\n— ${fin.model}, ${fin.tokens} tokens, ${Math.round((Date.now() - S.sT0) / 1000)}s, ${fin.where}${S.mapInfo ? " · map: " + S.mapInfo : ""}`; save(); render(); });
