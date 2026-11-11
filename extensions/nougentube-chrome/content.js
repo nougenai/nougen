@@ -238,7 +238,7 @@
   .hd .chip{font:inherit;font-size:12px;color:var(--tx)}
   .acts{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px 2px}
   .vf{margin:6px 12px 12px;padding:10px 12px;border:1px solid var(--ln);border-radius:var(--r);background:var(--card);font-size:12.5px}
-  .vh{font-weight:700;margin-bottom:6px}.vr{display:flex;gap:8px;padding:2px 0}.vok{color:var(--ok);font-weight:700}.vno{color:var(--warn);font-weight:700}
+  .vh{font-weight:700;margin-bottom:6px}.vr{display:flex;gap:8px;padding:2px 0}.vr a,.md a[target]{color:var(--ac2);text-decoration:none}.vr a:hover,.md a[target]:hover{text-decoration:underline}.vok{color:var(--ok);font-weight:700}.vno{color:var(--warn);font-weight:700}
   .md table{border-collapse:collapse;margin:6px 0;font-size:12.5px}.md td,.md th{border:1px solid var(--ln);padding:4px 6px;text-align:left}
   .msg{margin:8px 12px;padding:8px 12px;border-radius:var(--r);background:var(--card)}.msg.u{background:color-mix(in srgb,var(--ac) 20%,transparent);margin-left:40px}
   .ft{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--ln)}.ft input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:var(--r);padding:7px 10px}
