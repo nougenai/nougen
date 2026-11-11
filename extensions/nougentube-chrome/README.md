@@ -71,7 +71,7 @@ From Electron's powerSaveBlocker. A batch, a Morph, a translation, audio transcr
 From Electron's BrowserWindow doc:
 - **Progress on the toolbar button** (like `setProgressBar`): a batch shows `done/total`, a Morph `1/4` to `4/4`, a translation a percentage, on the extension button in any tab; it clears when the job ends. The button also brings the panel forward in the current tab, opening it if it was collapsed, and opens settings on a tab with no panel.
 - **Closing is asked about** (like `close` with `preventDefault`): closing or reloading the tab while a batch, a Morph or a translation is running shows the browser's leave-this-page prompt, so a 20-video batch is not lost by accident.
-- **Hidden tabs do not starve the worker** (like `backgroundThrottling`): browsers slow a hidden tab's timers, so while a job holds, the background worker also pings itself every 20 s instead of relying on the page.
+- **Hidden tabs do not starve the worker** (like `backgroundThrottling`): browsers slow a hidden tab's timers, so while a job holds, the background worker also pings itself every 20 s instead of relying on the page. This is a safety net: on Chrome 157 an open connection alone kept the worker alive for the whole 400 s I measured (with and without the ping), so it matters for other Chrome versions, not that one.
 - **First frame in the right colours** (like `backgroundColor`): the panel is built in the right theme before the saved choice loads, and the settings page starts in the system's scheme.
 
 ## Windows, displays and links
