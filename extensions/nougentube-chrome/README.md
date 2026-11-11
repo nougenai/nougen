@@ -67,6 +67,13 @@ Accessibility follows the system too. With high contrast on (`prefers-contrast: 
 ## Long jobs keep the computer awake
 From Electron's powerSaveBlocker. A batch, a Morph, a translation, audio transcription or a long summary holds a "keep the system awake" request (never the screen) for as long as it runs, so a laptop does not sleep halfway through. The hold is one open connection to the background page: when the job ends, the panel closes, the tab navigates away or the page crashes, the connection closes and the hold is released. `power-core.js` keeps Electron's model on top of `chrome.power`: `start(type)` returns an id, `stop(id)` says whether it stopped, blockers overlap, and a stronger type wins until it stops. A worker that starts always lets go of any hold a dead one left behind. Switch it off under "Long jobs" in settings. It needs the `power` permission.
 
+## Long jobs, seen from outside the tab
+From Electron's BrowserWindow doc:
+- **Progress on the toolbar button** (like `setProgressBar`): a batch shows `done/total`, a Morph `1/4` to `4/4`, a translation a percentage, on the extension button in any tab; it clears when the job ends. The button also brings the panel forward in the current tab, opening it if it was collapsed, and opens settings on a tab with no panel.
+- **Closing is asked about** (like `close` with `preventDefault`): closing or reloading the tab while a batch, a Morph or a translation is running shows the browser's leave-this-page prompt, so a 20-video batch is not lost by accident.
+- **Hidden tabs do not starve the worker** (like `backgroundThrottling`): browsers slow a hidden tab's timers, so while a job holds, the background worker also pings itself every 20 s instead of relying on the page.
+- **First frame in the right colours** (like `backgroundColor`): the panel is built in the right theme before the saved choice loads, and the settings page starts in the system's scheme.
+
 ## Windows, displays and links
 Three more lessons from Electron's system-preferences, screen and shell docs, applied the browser way:
 - **Fit the space you actually have.** YouTube hides its side column in the one-column layout (a narrow window, or a high browser zoom). The panel used to vanish with it; it now sits under the player there, moves back when the window widens again, and is capped at 1400 px on very tall displays. Checked at 1280x560, 1920x1080 at 1x and 2x, 3840x2160 and 900x800.

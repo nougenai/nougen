@@ -1,7 +1,7 @@
 // Tests for the "awake" port in background.js: a long job in the panel keeps the computer awake, and the hold ends
 // the moment the panel goes away (port closed, tab navigated, crash), however the job ended.
 // Run: node --test extensions/nougentube-chrome/tests/background-awake.test.mjs
-import { test } from 'node:test';
+import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -9,6 +9,8 @@ import vm from 'node:vm';
 const SRC = readFileSync(new URL('../background.js', import.meta.url), 'utf8');
 const dir = new URL('../', import.meta.url);
 const T = { timeout: 5000 };
+const live = [];   // every interval a test's worker starts, cleared after each test so none can keep node alive
+afterEach(() => { live.splice(0).forEach(clearInterval); });
 
 function load({ withPower = true } = {}) {
   let onConnect; const log = [];
@@ -18,7 +20,8 @@ function load({ withPower = true } = {}) {
     sidePanel: { setPanelBehavior: async () => {} },
   };
   if (withPower) chrome.power = { requestKeepAwake: l => log.push('request:' + l), releaseKeepAwake: () => log.push('release') };
-  const ctx = { chrome, fetch: async () => ({ ok: true, json: async () => ({}) }), AbortController, AbortSignal, TextDecoder, setTimeout, clearTimeout, console, URL };
+  const ctx = { chrome, fetch: async () => ({ ok: true, json: async () => ({}) }), AbortController, AbortSignal, TextDecoder, setTimeout, clearTimeout, console, URL,
+    setInterval: (fn, ms) => { const t = setInterval(fn, ms / 1000); live.push(t); return t; }, clearInterval };
   ctx.globalThis = ctx;
   ctx.importScripts = (...names) => { for (const n of names) vm.runInContext(readFileSync(new URL(n, dir), 'utf8'), ctx); };
   vm.createContext(ctx);

@@ -61,3 +61,12 @@ def test_long_jobs_keep_the_computer_awake_and_always_let_go(name):
         ["node", "--test", str(test_file)], capture_output=True, text=True, timeout=120, check=False
     )
     assert result.returncode == 0, result.stdout[-2500:] + result.stderr[-1500:]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_long_jobs_show_progress_and_keep_the_worker_alive():
+    test_file = ROOT / "extensions" / "nougentube-chrome" / "tests" / "background-badge.test.mjs"
+    result = subprocess.run(
+        ["node", "--test", str(test_file)], capture_output=True, text=True, timeout=120, check=False
+    )
+    assert result.returncode == 0, result.stdout[-2500:] + result.stderr[-1500:]

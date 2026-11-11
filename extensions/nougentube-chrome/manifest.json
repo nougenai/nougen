@@ -1,8 +1,11 @@
 {
   "manifest_version": 3,
   "name": "NouGenTube",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "YouTube transcript, summary, chat and shards. Runs on your own models: local Ollama, the NouGenOpen free fleet, or your own provider keys.",
+  "action": {
+    "default_title": "NouGenTube: bring the panel forward"
+  },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",

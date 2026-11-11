@@ -274,6 +274,7 @@
         <button class="ib" id="col" title="Collapse">▾</button></div>
       <div class="note" id="note" hidden></div><div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button><button data-t="morph">Morph</button><button data-t="batch">Batch</button></div>
       <div class="tb" id="tb"></div><div class="bd" id="bd"></div><div id="ft"></div></div></div>`;
+    applyTheme();   // the first paint already has the right colours; the saved choice arrives a moment later
     root.querySelector(".tabs").onclick = e => { const t = e.target.dataset.t; if (t) { S.tab = t; render(); } };
     root.getElementById("col").onclick = () => { const w = root.getElementById("wrap"); w.hidden = !w.hidden; root.querySelector(".p").style.height = w.hidden ? "auto" : ""; };
     root.getElementById("cp").onclick = () => navigator.clipboard.writeText(S.tr && !S.tr.busy && S.tr.out.some(Boolean) ? copyTextTr() : copyText()).then(() => { const b = root.getElementById("cp"); b.textContent = "✓"; setTimeout(() => b.textContent = "⧉", 1200); });
@@ -592,8 +593,8 @@
     const custom = ($("tgc")?.value || "").trim().slice(0, 160);
     if ($("tg").value === "custom" && !custom) return $("tgc")?.focus();
     const M = S.morph = { target: $("tg").value, custom, text: "", shards: [], prior: [], queries: [], t0: Date.now(), busy: true, err: "", vaultOff: "", web: [], webOff: "", webVia: "", v21: true };
-    const release = holdAwake();
-    const bd = $("bd"), stage = (t, sub = "") => { if (S.tab === "morph") bd.innerHTML = loader(t, sub, M.t0); };
+    const release = holdAwake(); let step = 0;
+    const bd = $("bd"), stage = (t, sub = "") => { progress(++step + "/4"); if (S.tab === "morph") bd.innerHTML = loader(t, sub, M.t0); };
     renderMorph();
     try {
       // 1. What is this video really teaching? Reduce it to phrases the vault can be searched for.
@@ -745,6 +746,7 @@
       if (S.tr !== T) return;
       if (T.err) break;
       T.done = Math.min(total, i + size);
+      progress(Math.round(100 * T.done / total) + "%");
       if (S.tab === "transcript") drawLines();
     }
     if (S.tr !== T) return;
@@ -784,18 +786,23 @@
   // ---------- Batch: many videos or a playlist, one summary each (NoteGPT: "batch summarize up to 20 videos") ----------
   // Keeps the computer awake (not the screen) while a long job runs; the returned function lets go. The hold lives in the
   // background page and ends the moment this port does. Pings keep that page alive; a dropped port is opened again.
+  const sayers = new Set();   // every open hold's way of showing progress on the toolbar button
+  const progress = text => sayers.forEach(say => say(text));
   function holdAwake() {
     if (S.keepAwake === false) return () => {};
-    let port = null, done = false, ka = null;
+    let port = null, done = false, ka = null, last = "";
+    const say = text => { last = text; try { if (port) port.postMessage({ progress: text }); } catch {} };
+    sayers.add(say);
     const open = () => {
       if (done) return;
       try { port = chrome.runtime.connect({ name: "awake" }); } catch { return; }
       port.postMessage({ start: "prevent-app-suspension" });
+      if (last) port.postMessage({ progress: last });
       clearInterval(ka); ka = setInterval(() => { try { port.postMessage({ ping: 1 }); } catch {} }, 15000);
       port.onDisconnect.addListener(() => { clearInterval(ka); if (!done) setTimeout(open, 1000); });
     };
     open();
-    return () => { done = true; clearInterval(ka); try { if (port) port.disconnect(); } catch {} };
+    return () => { done = true; sayers.delete(say); clearInterval(ka); try { if (port) port.disconnect(); } catch {} };
   }
   const withAwake = async fn => { const release = holdAwake(); try { return await fn(); } finally { release(); } };
   const tubeCall = (kind, body) => portCall("tube", { kind, body });
@@ -847,10 +854,12 @@
     const B = S.bt; if (B.running) return;
     B.running = true; B.stop = false; btPaint();
     const release = holdAwake();
+    const tally = () => progress(B.items.filter(i => i.status === "done").length + "/" + B.items.length);
+    tally();
     for (const it of B.items) {
       if (B.stop) break;
       if (it.status !== "queued" && it.status !== "error") continue;
-      try { await batchOne(it); } catch (e) { it.status = "error"; it.err = String(e.message || e).replace(/^[\s⚠]+/, ""); it.stage = ""; btSave(); btPaint(); }
+      try { await batchOne(it); tally(); } catch (e) { it.status = "error"; it.err = String(e.message || e).replace(/^[\s⚠]+/, ""); it.stage = ""; btSave(); btPaint(); }
     }
     release(); B.running = false; btSave(); btPaint();
   }
@@ -1009,5 +1018,15 @@
     render();
   }
   document.addEventListener("yt-navigate-finish", load);
+  // The toolbar button asks this tab to bring the panel forward.
+  chrome.runtime.onMessage.addListener((m, _from, reply) => {
+    if (!m || m.type !== "focus-panel") return;
+    if (!host || !host.isConnected) return reply({ ok: false });
+    host.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    const wrap = root.getElementById("wrap"); if (wrap && wrap.hidden) root.getElementById("col").click();
+    reply({ ok: true });
+  });
+  // Closing the tab while a batch, a Morph or a translation is running would lose it; ask first (Electron: preventDefault on close).
+  addEventListener("beforeunload", e => { if ((S.bt && S.bt.running) || (S.tr && S.tr.busy) || (S.morph && S.morph.busy)) { e.preventDefault(); e.returnValue = ""; } });
   load();
 })();

@@ -10,6 +10,26 @@ const IDLE_MS = globalThis.NG_IDLE_MS ?? 90000;   // max silence between chunks 
 // Long jobs in the panel (a batch, a Morph, a translation, audio transcription) keep the computer awake, never the screen.
 const blocker = createPowerBlocker(chrome.power);
 blocker.reset();   // a worker that starts holds nothing, so let go of anything a dead one left in the system
+// While a job holds, the worker keeps itself alive from its own side. A hidden tab's timers are throttled (Electron's
+// backgroundThrottling), so a worker that lives on the page's pings can die mid-job. Any extension API call restarts its idle timer.
+const jobs = new Map();   // awake port -> { id: blocker id or null, text: progress shown on the toolbar button }
+let selfPing = null;
+function syncJobs() {
+  const holding = [...jobs.values()].some(j => j.id !== null);
+  if (holding && !selfPing) selfPing = setInterval(() => { try { chrome.runtime.getPlatformInfo(); } catch { /* worker is going away anyway */ } }, 20000);
+  if (!holding && selfPing) { clearInterval(selfPing); selfPing = null; }
+}
+// Progress of the long jobs on the toolbar button, like a taskbar progress bar; it clears when the last job ends.
+function paintBadge() {
+  if (!chrome.action) return;
+  let text = "";
+  for (const j of jobs.values()) if (j.text) text = j.text;
+  try { chrome.action.setBadgeText({ text }); if (text) chrome.action.setBadgeBackgroundColor({ color: "#a47bff" }); } catch { /* no toolbar button */ }
+}
+// The toolbar button brings the panel forward in the current tab; on a tab with no panel it opens settings.
+if (chrome.action) chrome.action.onClicked.addListener(async tab => {
+  try { const r = await chrome.tabs.sendMessage(tab.id, { type: "focus-panel" }); if (!r || !r.ok) throw new Error("no panel"); } catch { chrome.runtime.openOptionsPage(); }
+});
 
 async function cfg() {
   const sync = await chrome.storage.sync.get(["host", "model", "localModel", "autoOrder"]);
@@ -143,10 +163,15 @@ async function autoRoutes(c) {
 }
 
 chrome.runtime.onConnect.addListener(port => {
-  if (port.name === "awake") {   // one open port = one hold; it ends when the panel goes away, however the job ended
-    let id = null;
-    port.onMessage.addListener(msg => { if (msg && msg.start && id === null) { try { id = blocker.start(msg.start); } catch { /* unknown type: hold nothing */ } } });
-    port.onDisconnect.addListener(() => { if (id !== null) blocker.stop(id); id = null; });
+  if (port.name === "awake") {   // one open port = one long job: a hold, a progress badge, and a worker that stays alive
+    const job = { id: null, text: "" };
+    jobs.set(port, job);
+    port.onMessage.addListener(msg => {
+      if (!msg) return;
+      if (msg.start && job.id === null) { try { job.id = blocker.start(msg.start); } catch { /* unknown type: hold nothing */ } syncJobs(); }
+      if (typeof msg.progress === "string") { job.text = msg.progress.slice(0, 4); paintBadge(); }   // a badge has room for four characters
+    });
+    port.onDisconnect.addListener(() => { if (job.id !== null) blocker.stop(job.id); jobs.delete(port); syncJobs(); paintBadge(); });
     return;
   }
   // Request/response ports to the bridge. As in Electron's MessagePorts model, a closed port is a signal to settle:
