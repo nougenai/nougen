@@ -6,6 +6,7 @@ importScripts("providers.js");
 
 const DEF = { host: "http://localhost:11434", model: "auto", localModel: "gemma4:e2b-qat", autoOrder: "free" };
 const NGO = "http://127.0.0.1:8765";   // nougen-open serve
+const IDLE_MS = globalThis.NG_IDLE_MS ?? 90000;   // max silence between chunks once text has started
 
 async function cfg() {
   const sync = await chrome.storage.sync.get(["host", "model", "localModel", "autoOrder"]);
@@ -186,18 +187,21 @@ chrome.runtime.onConnect.addListener(port => {
     if (!routes.length) return send({ error: "No model route is available. Start Ollama or the NouGenOpen bridge, or add a provider key in ⚙ settings." });
     const failed = [];
     for (let i = 0; i < routes.length && !closed; i++) {
-      const rt = routes[i], ctrl = current = new AbortController(); let first = false, silent = false;
-      const timer = setTimeout(() => { silent = true; ctrl.abort(); }, rt.firstMs);
+      const rt = routes[i], ctrl = current = new AbortController(); let first = false, silent = false, stalled = false, timer;
+      // firstMs bounds the wait for the first text; after that every chunk restarts an idle deadline,
+      // so a stream that stops mid-answer is aborted instead of hanging the panel.
+      const arm = (ms, why) => { clearTimeout(timer); timer = setTimeout(() => { why(); ctrl.abort(); }, ms); };
+      arm(rt.firstMs, () => { silent = true; });
       if (routes.length > 1) send({ stage: (i ? "Trying " : "Asking ") + rt.label + (i ? ` (route ${i + 1} of ${routes.length})` : "") });
       try {
-        const rec = await rt.run(messages, t => { if (!first) { first = true; clearTimeout(timer); } send({ delta: t }); }, ctrl.signal);
-        clearTimeout(timer);
+        const rec = await rt.run(messages, t => { first = true; arm(IDLE_MS, () => { stalled = true; }); send({ delta: t }); }, ctrl.signal);
         return send({ done: true, ...rec, failed });
       } catch (e) {
-        clearTimeout(timer); if (closed) return;
-        failed.push(rt.label + ": " + (silent ? `no answer within ${Math.round(rt.firstMs / 1000)}s` : String(e.message || e).slice(0, 160)));
+        if (closed) return;
+        failed.push(rt.label + ": " + (silent ? `no answer within ${Math.round(rt.firstMs / 1000)}s`
+          : stalled ? `went quiet for ${Math.round(IDLE_MS / 1000)}s mid-answer` : String(e.message || e).slice(0, 160)));
         if (first) send({ reset: true });   // drop the partial text before the next route writes
-      }
+      } finally { clearTimeout(timer); }
     }
     send({ error: (routes.length > 1 ? "Every route failed. " : "") + failed.join(" · ") });
   });
