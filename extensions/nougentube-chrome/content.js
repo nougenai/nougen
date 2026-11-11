@@ -56,6 +56,63 @@
     return { t: parseTs((ts || "0").trim()), text: (tx || "").replace(/\s+/g, " ").trim() };
   }).filter(l => l.text);
 
+  // False once the extension has been reloaded under this tab (the old copy is orphaned).
+  const alive = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
+
+  // ---- Player tier: inject.js (page world) forwards the caption track the player itself
+  // downloads. Works in background tabs and when YouTube's transcript panel misbehaves.
+  const TT = {};   // video id -> raw caption track body
+  window.addEventListener("message", e => {
+    if (e.source !== window || e.data?.__ngt !== "timedtext") return;
+    try { const v = new URL(e.data.url, location.origin).searchParams.get("v");
+      if (v && (!TT[v] || e.data.body.length > TT[v].length)) TT[v] = e.data.body; } catch {}
+  });
+  function pageInfo() {   // which caption tracks does the player say this video has?
+    return new Promise(res => { const id = Math.random().toString(36).slice(2);
+      const on = e => { if (e.source === window && e.data?.__ngt === "info" && e.data.id === id) { window.removeEventListener("message", on); res(e.data); } };
+      window.addEventListener("message", on); window.postMessage({ __ngt: "info?", id }, location.origin);
+      setTimeout(() => { window.removeEventListener("message", on); res(null); }, 1200); });
+  }
+  function parseTrack(body) {
+    const clean = t => t.replace(/\s+/g, " ").trim();
+    if (body.trim().startsWith("{")) {   // json3
+      return (JSON.parse(body).events || []).filter(ev => ev.segs)
+        .map(ev => ({ t: (ev.tStartMs || 0) / 1000, text: clean(ev.segs.map(x => x.utf8 || "").join("")) })).filter(l => l.text);
+    }
+    const doc = new DOMParser().parseFromString(body, "text/xml");   // srv1 <text start=> / srv3 <p t=>
+    return [...doc.querySelectorAll("text, p")].map(n => ({
+      t: n.hasAttribute("start") ? parseFloat(n.getAttribute("start")) : (parseInt(n.getAttribute("t"), 10) || 0) / 1000,
+      text: clean(n.textContent) })).filter(l => l.text);
+  }
+  // The track the player has already downloaded for this video, if any (no clicks needed).
+  const captured = vid => { try { const l = TT[vid] && parseTrack(TT[vid]); return l && l.length ? { lines: l, lang: "YouTube captions" } : null; } catch { return null; } };
+  async function viaPlayer(vid) {
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    const got = () => captured(vid);
+    let r = got(); if (r) return r;
+    const cc = document.querySelector(".ytp-subtitles-button");
+    if (!cc || cc.getAttribute("aria-disabled") === "true" || getComputedStyle(cc).display === "none") return null;
+    // Switching captions on makes the player download the track; put the button back afterwards.
+    const wasOn = cc.getAttribute("aria-pressed") === "true";
+    if (wasOn) { cc.click(); await wait(250); }
+    cc.click();
+    for (let i = 0; i < 40 && !(r = got()); i++) await wait(200);
+    if (!wasOn && cc.getAttribute("aria-pressed") === "true") cc.click();
+    return r;
+  }
+
+  // ---- Saved transcripts: the 40 most recent videos, so a revisit is instant and offline-safe.
+  const cacheGet = async vid => { const k = "t:" + vid, v = (await chrome.storage.local.get(k))[k];
+    return v?.lines?.length ? { lines: v.lines, lang: "saved" } : null; };
+  async function cachePut(vid, r) {
+    try {
+      const { tIdx = [] } = await chrome.storage.local.get("tIdx");
+      const idx = [vid, ...tIdx.filter(x => x !== vid)], drop = idx.splice(40);
+      await chrome.storage.local.set({ ["t:" + vid]: { lines: r.lines, at: Date.now() }, tIdx: idx });
+      if (drop.length) await chrome.storage.local.remove(drop.map(x => "t:" + x));
+    } catch (e) { console.warn("[NouGenTube] could not save transcript", e); }
+  }
+
   function viaPanel(vid, limitMs = 45000) {
     const curVid = () => new URLSearchParams(location.search).get("v");
     document.querySelectorAll("style[data-nougentube]").forEach(x => x.remove());
@@ -64,7 +121,7 @@
     style.textContent = `${PANELS}{opacity:0!important;pointer-events:none!important}`;
     if (!userOpen) document.head.append(style);
     return new Promise(resolve => {
-      let clickedAt = 0, lastCount = -1, stableSince = 0, done = false, raf = 0;
+      let clickedAt = 0, lastCount = -1, stableSince = 0, done = false, raf = 0; const t0 = performance.now();
       const finish = rows => {
         if (done) return; done = true; obs.disconnect(); clearInterval(tick); clearTimeout(limit);
         if (!userOpen) {
@@ -92,7 +149,9 @@
         }
         const b = document.querySelector(BTN);
         if (b && performance.now() - clickedAt > 4000) { clickedAt = performance.now(); b.click(); setStage("Opening YouTube's transcript"); }
-        else if (!b) setStage("Waiting for YouTube's page");
+        else if (!b) { setStage("Waiting for YouTube's page");
+          // No transcript button after 6s, or the player already has the captions: let the next source answer.
+          if (performance.now() - t0 > 6000 || (performance.now() - t0 > 1500 && captured(vid))) return finish(null); }
       };
       const kick = () => { if (!raf) raf = requestAnimationFrame(step); };
       const obs = new MutationObserver(kick);
@@ -220,6 +279,7 @@
   }
   const DOTS = '<span class="dots" aria-label="Thinking"><span></span><span></span><span></span></span>';
   const WRITING = '<div class="tail lst"><span class="spin"></span>Writing…</div>';
+  setInterval(() => { if (root && !alive() && !S.dead) { S.dead = true; render(); } }, 2000);
   setInterval(() => { if (!root) return; root.querySelectorAll(".el[data-t0]").forEach(e => {
     const s = Math.max(0, Math.round((Date.now() - +e.dataset.t0) / 1000)); e.textContent = s < 60 ? s + "s" : (s / 60 | 0) + "m " + (s % 60) + "s"; }); }, 500);
   function transcriptLoading() {
@@ -237,10 +297,14 @@
     if (!root) return;
     root.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.t === S.tab));
     const tb = $("tb"), bd = $("bd"), ft = $("ft"); ft.innerHTML = ""; tb.innerHTML = ""; tb.hidden = false;
-    if (S.err) { bd.innerHTML = `<div class="mu err">${esc(S.err)}</div><div class="mu"><button class="go" id="rt">Retry</button></div>`; $("rt").onclick = () => { S.vid = null; load(); }; return; }
+    // The extension was updated or reloaded while this tab stayed open: this copy can no longer
+    // reach its background page, so say so instead of failing in confusing ways.
+    if (!alive()) { bd.innerHTML = `<div class="mu">NouGenTube was updated. Refresh this tab to keep using it.</div><div class="mu"><button class="go" id="rf">Refresh tab</button></div>`; $("rf").onclick = () => location.reload(); return; }
+    if (S.err) { bd.innerHTML = `<div class="mu err">${esc(S.err)}</div><div class="mu"><button class="go" id="rt">Try again</button></div>`; $("rt").onclick = () => { S.vid = null; S.fresh = true; load(); }; return; }
     if (!S.lines.length) { bd.innerHTML = transcriptLoading(); return; }
     if (S.tab === "transcript") {
-      tb.innerHTML = `<input id="q" placeholder="Search transcript…" value="${esc(S.q || "")}"><span class="chip ${S.follow ? "on" : ""}" id="fl" title="Auto-scroll with the video">Follow</span><span class="mu" style="padding:0">${S.lang || ""}</span>`;
+      tb.innerHTML = `<input id="q" placeholder="Search transcript…" value="${esc(S.q || "")}"><span class="chip ${S.follow ? "on" : ""}" id="fl" title="Auto-scroll with the video">Follow</span>${S.lang === "saved" ? `<span class="chip" id="rl" title="This transcript was saved from an earlier visit. Click to fetch it from YouTube again.">saved ↻</span>` : `<span class="mu" style="padding:0">${S.lang || ""}</span>`}`;
+      if ($("rl")) $("rl").onclick = () => { S.vid = null; S.fresh = true; load(); };
       $("q").oninput = e => { S.q = e.target.value; drawLines(); }; $("fl").onclick = () => { S.follow = !S.follow; render(); };
       drawLines();
     } else if (S.tab === "summary") {
@@ -388,18 +452,44 @@
     const vid = new URLSearchParams(location.search).get("v");
     if (location.pathname !== "/watch" || !vid) { host?.remove(); host = null; return; }
     if (!mount()) return setTimeout(load, 500);
+    if (!alive()) return render();
     if (vid === S.vid) return;
     Object.assign(S, { vid, lines: [], paras: [], err: null, summary: "", chat: [], hl: {}, q: "", tT0: Date.now(), tStage: "" }); render();
     const st = (await chrome.storage.local.get(key()))[key()]; if (st) Object.assign(S, st);
     Object.assign(S, await chrome.storage.sync.get(["sty", "len", "lng", "custom"])); render();
     try {
-      const to = (pr, ms) => Promise.race([pr.catch(e => (console.warn("[NouGenTube]", e), null)), new Promise(r => setTimeout(() => r(null), ms))]);
+      const to = (pr, ms) => Promise.race([Promise.resolve(pr).catch(e => (console.warn("[NouGenTube]", e), null)), new Promise(r => setTimeout(() => r(null), ms))]);
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const gone = () => vid !== S.vid || !alive();
       S.title = document.title.replace(/^\(\d+\)\s*/, "").replace(/ - YouTube$/, "");
-      let r = await to(viaPanel(vid), 864e5); console.debug("[NouGenTube] panel tier:", r?.lines.length);
-      if (!r) { const p = await to(playerResponse(vid), 10000);
-        if (p) { S.title = p.pr?.videoDetails?.title || S.title; r = (await to(viaTimedtext(p.pr), 8000)) || (await to(viaInnertube(p), 8000)); } }
-      if (vid !== S.vid) return;
-      if (!r) S.err = "No captions available for this video."; else { S.lines = r.lines; S.lang = r.lang; S.paras = paragraphs(r.lines); }
+
+      // 0. Saved copy from an earlier visit: instant, and immune to YouTube having a bad moment.
+      let r = S.fresh ? null : await to(cacheGet(vid), 1500);
+      S.fresh = false;
+
+      // 1-4. Independent ways to get the transcript, tried in order, the whole ladder up to 3
+      // times. One source failing never ends in an error while another can still answer.
+      const TRIES = 3; let info = null;
+      for (let n = 1; n <= TRIES && !r && !gone(); n++) {
+        if (n > 1) { setStage(`Trying again (${n} of ${TRIES})`); await wait(1200 * n); if (gone()) return; }
+        // A background tab can't render YouTube's panel, but the player still serves captions.
+        if (document.hidden) r = await to(viaPlayer(vid), 12000);
+        if (!r && n > 1) r = captured(vid);
+        if (!r && !gone()) r = await to(viaPanel(vid, 18000), document.hidden ? 864e5 : 20000);
+        if (!r && !gone()) { setStage("Asking the video player for its captions"); r = await to(viaPlayer(vid), 12000); }
+        if (!r && !gone()) { setStage("Trying YouTube's caption service");
+          const p = await to(playerResponse(vid), 10000);
+          if (p) { S.title = p.pr?.videoDetails?.title || S.title; r = (await to(viaTimedtext(p.pr), 8000)) || (await to(viaInnertube(p), 8000)); } }
+        if (!r && !gone()) {   // stop early only when YouTube itself says there is nothing to get
+          info = await pageInfo();
+          if (info && info.vid === vid && !info.tracks.length && !document.querySelector(BTN)) break;
+        }
+      }
+      if (gone()) return;
+      if (r) { S.lines = r.lines; S.lang = r.lang; S.paras = paragraphs(r.lines); if (r.lang !== "saved") cachePut(vid, r); }
+      else S.err = (info && info.vid === vid && !info.tracks.length && !document.querySelector(BTN))
+        ? "This video has no captions, so there is no transcript to read."
+        : "YouTube has captions for this video but didn't return them after 3 tries.";
     } catch (e) { S.err = "Transcript fetch failed: " + e.message; }
     render();
   }

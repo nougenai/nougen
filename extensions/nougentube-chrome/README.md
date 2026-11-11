@@ -33,6 +33,15 @@ Ideas adopted from open-source summarizers:
 - Map-reduce: bskrishna2006 (Apache-2.0).
 - Tube-Brief has no license, so nothing was copied from it.
 
+## Transcript failsafes
+The transcript comes from several independent sources, tried in order, and the whole ladder runs up to 3 times before any error shows:
+1. **Saved copy.** The 40 most recent transcripts are kept in the browser, so a revisit loads at once. The "saved ↻" chip fetches it from YouTube again.
+2. **YouTube's transcript panel**, both the classic and the modern layout, followed live as the page renders.
+3. **The player's own captions.** `inject.js` runs in the page and passes along the caption track the player downloads. This works in background tabs. If captions are off, they are switched on for a moment and then put back.
+4. **YouTube's caption service** called directly (usually blocked, kept as a last resort).
+
+The error text says which case it is: the video has no captions at all, or YouTube has them but didn't return them. If the extension is updated while a tab stays open, that tab's panel asks for a refresh instead of failing.
+
 ## Notes
 - Ollama returns 403 for `chrome-extension://` origins. `rules.json` (declarativeNetRequest) strips the Origin header on requests to localhost:11434, so you don't need to set `OLLAMA_ORIGINS`.
 - YouTube renders the transcript only while the tab is visible. In a background tab the panel shows a waiting message and loads once you switch to the tab.

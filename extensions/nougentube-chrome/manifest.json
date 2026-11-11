@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NouGenTube",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "YouTube transcript, local-AI summary, chat and highlights. Runs on your own Ollama — $0, private.",
   "permissions": [
     "storage",
@@ -18,6 +18,16 @@
     "service_worker": "background.js"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "inject.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://www.youtube.com/*"
