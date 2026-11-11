@@ -70,3 +70,12 @@ def test_long_jobs_show_progress_and_keep_the_worker_alive():
         ["node", "--test", str(test_file)], capture_output=True, text=True, timeout=120, check=False
     )
     assert result.returncode == 0, result.stdout[-2500:] + result.stderr[-1500:]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_batch_ids_cannot_carry_markup_and_saves_say_what_they_hold():
+    test_file = ROOT / "extensions" / "nougentube-chrome" / "tests" / "batch-core.test.mjs"
+    result = subprocess.run(
+        ["node", "--test", str(test_file)], capture_output=True, text=True, timeout=120, check=False
+    )
+    assert result.returncode == 0, result.stdout[-2500:] + result.stderr[-1500:]

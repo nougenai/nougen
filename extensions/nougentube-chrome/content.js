@@ -807,7 +807,7 @@
   const withAwake = async fn => { const release = holdAwake(); try { return await fn(); } finally { release(); } };
   const tubeCall = (kind, body) => portCall("tube", { kind, body });
   const BATCH_MAX = 20, BATCH_STYLES = ["brief", "tldr", "deep", "intel", "chapters", "steps"];
-  const idOf = s => { const m = String(s).match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/|\/live\/)([A-Za-z0-9_-]{11})/) || String(s).trim().match(/^([A-Za-z0-9_-]{11})$/); return m ? m[1] : null; };
+  const { idOf, isVideoId, shardContent } = NGT_BATCH;
   const lineText = ls => ls.map(l => "[" + fmt(l.t) + "] " + l.text).join("\n");
   const sysFor = (title, body) => "You are NouGenTube, analysing the YouTube video \"" + title + "\". Ground every statement in the transcript: state only what the speaker actually says, never outside knowledge; if a point has no basis in the transcript, drop it (shorter is better than invented). Cite moments as [m:ss] or [h:mm:ss] timestamps copied from the transcript. Be concise. Markdown only.\n\nTRANSCRIPT:\n" + body;
   const stylePrompt = sty => STY[sty] + " " + (["intel", "mindmap", "chapters"].includes(sty) ? "" : LEN[S.len || "medium"]) + (S.lng && S.lng !== "Auto" ? " Write the answer in " + S.lng + "." : "");
@@ -831,7 +831,8 @@
   const btPaint = () => { if (S.tab === "batch") renderBatch(); };
   async function batchShard(it) {
     const lines = S.bt.mem[it.id], url = "https://www.youtube.com/watch?v=" + it.id;
-    const content = it.title + " - YouTube\n" + url + "\n\n" + it.text + (lines ? "\n\n---\n\nTranscript:\n" + paragraphs(lines).map(l => "(" + pad(l.t) + ") " + l.text).join("\n") : "");
+    const { content, summaryOnly } = shardContent(it, url, lines ? paragraphs(lines).map(l => "(" + pad(l.t) + ") " + l.text).join("\n") : "");
+    it.shardNote = summaryOnly ? "Saved the summary only: the transcript is not kept after a reload." : "";
     const doc = { title: (it.title + " — NouGenTube " + (STYN[S.bt.sty] || "summary")).slice(0, 190), content, tags: ["nougentube", "tube-report:" + it.id, S.bt.sty || "brief", "batch"], source_uri: url };
     let r = await portCall("shard", { doc }); if (!r) r = await portCall("shard", { doc });
     it.shard = r && r.ok ? r.parts.map(p => p.shard_id != null ? p.shard_id + "@db" + p.db_index : "stored").join(", ") : "";
@@ -866,7 +867,7 @@
   async function batchAdd(text) {
     const B = S.bt, notes = [], have = new Set(B.items.map(i => i.id));
     let capped = false;
-    const add = (id, title) => { if (!id || have.has(id)) return false; if (B.items.length >= BATCH_MAX) { capped = true; return false; } have.add(id); B.items.push({ id, title: title || "", status: "queued" }); return true; };
+    const add = (id, title) => { if (!isVideoId(id) || have.has(id)) return false; if (B.items.length >= BATCH_MAX) { capped = true; return false; } have.add(id); B.items.push({ id, title: title || "", status: "queued" }); return true; };
     for (const raw of String(text).split(/[\n,\s]+/).map(s => s.trim()).filter(Boolean)) {
       if (/[?&]list=/.test(raw) && !/[?&]v=/.test(raw)) {
         const p = await tubeCall("playlist", { url: raw });
@@ -887,7 +888,7 @@
     const tb = $("tb"), bd = $("bd"), ft = $("ft"); ft.innerHTML = ""; tb.hidden = false; tb.style.flexWrap = "wrap";
     if (!S.bt) {
       S.bt = { items: [], mem: {}, sty: "brief", shardAll: true, loading: true };
-      chrome.storage.local.get("batch").then(d => { const b = d.batch || {}; S.bt = { items: (b.items || []).map(i => (i.status === "transcript" || i.status === "summary") ? { ...i, status: "queued", stage: "" } : i), mem: {}, sty: b.sty || "brief", shardAll: b.shardAll !== false }; if (S.tab === "batch") renderBatch(); }).catch(() => { S.bt.loading = false; });
+      chrome.storage.local.get("batch").then(d => { const b = d.batch || {}; S.bt = { items: (b.items || []).filter(i => isVideoId(i.id)).map(i => (i.status === "transcript" || i.status === "summary") ? { ...i, status: "queued", stage: "" } : i), mem: {}, sty: b.sty || "brief", shardAll: b.shardAll !== false }; if (S.tab === "batch") renderBatch(); }).catch(() => { S.bt.loading = false; });
       bd.innerHTML = '<div class="mu">Loading…</div>'; tb.innerHTML = ""; return;
     }
     const B = S.bt, done = B.items.filter(i => i.status === "done").length, errs = B.items.filter(i => i.status === "error").length, queued = B.items.filter(i => i.status === "queued" || i.status === "error").length;
@@ -901,9 +902,9 @@
     const row = it => {
       const icon = it.status === "done" ? '<span class="vok">✓</span>' : it.status === "error" ? '<span class="vno">!</span>' : it.status === "queued" ? '<span class="mu">·</span>' : '<span class="spin"></span>';
       const head = '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(it.title || it.id) + "</span>";
-      const meta = it.status === "done" ? '<div class="mu" style="font-size:12px">' + (it.src === "audio" ? "Transcribed from the audio on this computer, so check names and numbers. " : "") + (it.outside ? '<span class="err">' + it.outside + " timestamp" + (it.outside === 1 ? "" : "s") + " fall outside the video.</span> " : "Timestamps inside the video. ") + (it.shard ? "Saved " + esc(it.shard) + "." : it.shardErr ? '<span class="err">Not saved: ' + esc(it.shardErr) + "</span>" : "") + (it.model ? " · " + esc(it.model) : "") + "</div>" : it.status === "error" ? '<div class="mu err" style="font-size:12px">' + esc(it.err) + "</div>" : it.stage ? '<div class="mu" style="font-size:12px">' + esc(it.stage) + "</div>" : "";
-      const body = it.status === "done" ? '<details class="vf"><summary class="vh" style="cursor:pointer">Read the summary</summary><div class="md">' + md(it.text) + '</div><div class="acts"><span class="chip" data-cp="' + it.id + '">Copy</span>' + (it.shard ? "" : '<span class="chip" data-sh="' + it.id + '">Shard</span>') + "</div></details>" : "";
-      return '<div style="padding:6px 0;border-bottom:1px solid var(--ln)"><div class="vr">' + icon + head + '<a class="mu" href="https://www.youtube.com/watch?v=' + it.id + '" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="Open the video">↗</a><span class="chip" data-rm="' + it.id + '" title="Remove">×</span></div>' + meta + body + "</div>";
+      const meta = it.status === "done" ? '<div class="mu" style="font-size:12px">' + (it.src === "audio" ? "Transcribed from the audio on this computer, so check names and numbers. " : "") + (it.outside ? '<span class="err">' + it.outside + " timestamp" + (it.outside === 1 ? "" : "s") + " fall outside the video.</span> " : "Timestamps inside the video. ") + (it.shard ? "Saved " + esc(it.shard) + "." + (it.shardNote ? " " + esc(it.shardNote) : "") : it.shardErr ? '<span class="err">Not saved: ' + esc(it.shardErr) + "</span>" : "") + (it.model ? " · " + esc(it.model) : "") + "</div>" : it.status === "error" ? '<div class="mu err" style="font-size:12px">' + esc(it.err) + "</div>" : it.stage ? '<div class="mu" style="font-size:12px">' + esc(it.stage) + "</div>" : "";
+      const body = it.status === "done" ? '<details class="vf"><summary class="vh" style="cursor:pointer">Read the summary</summary><div class="md">' + md(it.text) + '</div><div class="acts"><span class="chip" data-cp="' + esc(it.id) + '">Copy</span>' + (it.shard ? "" : '<span class="chip" data-sh="' + esc(it.id) + '">Shard</span>') + "</div></details>" : "";
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--ln)"><div class="vr">' + icon + head + '<a class="mu" href="https://www.youtube.com/watch?v=' + esc(it.id) + '" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="Open the video">↗</a><span class="chip" data-rm="' + esc(it.id) + '" title="Remove">×</span></div>' + meta + body + "</div>";
     };
     bd.innerHTML = (S.bridge ? "" : '<div class="mu err">Batch needs the NouGenOpen bridge, which fetches transcripts and transcribes audio on this computer. Start <b>nougen-open serve</b> and reopen this tab.</div>') +
       '<textarea id="bl" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg);color:inherit;border:1px solid var(--ln);border-radius:var(--r);padding:8px;font:inherit" placeholder="Paste YouTube links, one per line (up to ' + BATCH_MAX + '), or a playlist link">' + esc(B.draft || "") + "</textarea>" +

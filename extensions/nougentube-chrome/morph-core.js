@@ -33,9 +33,10 @@
   // Numbered lines "N. Step name: ..." -> the step numbers found with the right name at the right number.
   function v21Found(text) {
     const found = new Set();
+    let last = 0;     // a step only counts if it comes after the previous counted one, so a shuffled list cannot pass
     for (const m of String(text).matchAll(/^\s*(?:[-*]\s*)?(\d{1,2})[.)]\s*\**\s*([^:\n]{2,60}?)\s*\**\s*(?::|\s[-–—]\s|[–—])/gm)) {
       const n = +m[1];
-      if (n >= 1 && n <= 21 && norm(m[2]).startsWith(norm(V21[n - 1]))) found.add(n);
+      if (n >= 1 && n <= 21 && n > last && norm(m[2]).startsWith(norm(V21[n - 1]))) { found.add(n); last = n; }
     }
     return found;
   }

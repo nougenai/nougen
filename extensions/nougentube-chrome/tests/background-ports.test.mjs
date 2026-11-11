@@ -125,3 +125,12 @@ test('web: a request that never answers ends with a clear timeout, on the scaled
   assert.equal(p.posted[0].ok, false);
   assert.match(p.posted[0].error, /took too long/);
 });
+
+test('recall, map and shard: a bridge that accepts the request but never answers ends with a clear timeout', T, async () => {
+  for (const [name, msg] of [['recall', { body: { queries: ['x'] } }], ['map', { prompts: ['x'] }], ['shard', { doc: { title: 'tttt', content: 'cccccccccc' } }]]) {
+    const p = load(hangs({})).open(name);
+    await p.send(msg);
+    assert.equal(p.posted[0].ok, false, name);
+    assert.match(p.posted[0].error, /took too long/, name);
+  }
+});

@@ -177,11 +177,11 @@ chrome.runtime.onConnect.addListener(port => {
   // Request/response ports to the bridge. As in Electron's MessagePorts model, a closed port is a signal to settle:
   // when the panel goes away (closed, or navigated to another video) the request is aborted and nothing is posted back.
   const BRIDGE = {
-    map: { path: () => "map", timeout: 0, body: m => ({ prompts: m.prompts, system: m.system, max_tokens: 1500 }), ok: j => ({ ok: true, results: j.results }) },
-    recall: { path: () => "recall", timeout: 0, body: m => m.body, ok: j => ({ ok: true, shards: j.shards || [], failed: j.failed || [] }) },
+    map: { path: () => "map", timeout: 300000, body: m => ({ prompts: m.prompts, system: m.system, max_tokens: 1500 }), ok: j => ({ ok: true, results: j.results }) },
+    recall: { path: () => "recall", timeout: 60000, body: m => m.body, ok: j => ({ ok: true, shards: j.shards || [], failed: j.failed || [] }) },
     tube: { path: m => (m.kind === "playlist" ? "playlist" : "transcript"), timeout: 0, timeoutOf: m => (m.kind === "playlist" ? 120000 : 1500000), body: m => m.body, ok: j => ({ ...j, ok: true }) },
     web: { path: () => "web", timeout: 110000, body: m => m.body, ok: j => ({ ok: true, results: j.results || [], providers: j.providers || [], failed: j.failed || [] }) },
-    shard: { path: () => "shard", timeout: 0, body: m => m.doc, ok: j => ({ ok: !!j.ok, parts: j.parts || [] }) },
+    shard: { path: () => "shard", timeout: 180000, body: m => m.doc, ok: j => ({ ok: !!j.ok, parts: j.parts || [] }) },
   };
   const bridge = BRIDGE[port.name];
   if (bridge) {

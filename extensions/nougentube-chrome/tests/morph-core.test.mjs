@@ -98,3 +98,17 @@ test('only http and https links are used as links', () => {
   assert.equal(core.safeUrl('javascript:alert(1)'), '#');
   assert.equal(core.safeUrl('data:text/html,x'), '#');
 });
+
+test('all 21 steps written in reverse order are not "numbered in order"', () => {
+  const reversed = STEPS.map((n, i) => `${i + 1}. ${n}: x`).reverse().join('\n');
+  const k = core.checkPlan(M({ text: SECTIONS + '### Valerion pass\n' + reversed }), refOf);
+  assert.ok(k.v21Missing.length > 0, 'a reversed list must not pass');
+  assert.equal(core.report(M(), { ...k, bad: [], cited: ['12@db3'], badWeb: [], web: [], webRead: 0, missing: [], cutOff: false }, { ts: 3, bad: [] }).some(r => r.text === 'The Valerion pass has all 21 steps, numbered in order'), false);
+});
+
+test('two swapped lines name the displaced step', () => {
+  const lines = STEPS.map((n, i) => `${i + 1}. ${n}: x`);
+  [lines[4], lines[5]] = [lines[5], lines[4]];          // step 6 now comes before step 5
+  const k = core.checkPlan(M({ text: SECTIONS + '### Valerion pass\n' + lines.join('\n') }), refOf);
+  assert.deepEqual(k.v21Missing, ['Extract Invariants']);
+});
