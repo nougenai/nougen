@@ -5,8 +5,8 @@
 const NGT_PROVIDERS = [
   { id: "anthropic", name: "Claude (Anthropic)", kind: "anthropic", base: "https://api.anthropic.com/v1",
     keyHint: "sk-ant-…", keyUrl: "https://platform.claude.com/settings/keys", prefer: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] },
-  { id: "openai", name: "OpenAI", kind: "openai", base: "https://api.openai.com/v1", keyHint: "sk-…", keyUrl: "https://platform.openai.com/api-keys" },
-  { id: "gemini", name: "Google Gemini", kind: "openai", base: "https://generativelanguage.googleapis.com/v1beta/openai", keyHint: "AIza…", keyUrl: "https://aistudio.google.com/apikey" },
+  { id: "openai", name: "OpenAI", kind: "openai", base: "https://api.openai.com/v1", keyHint: "sk-…", keyUrl: "https://platform.openai.com/api-keys", preferRe: "^gpt-[0-9.]+(-[a-z]+)?$" },
+  { id: "gemini", name: "Google Gemini", kind: "openai", base: "https://generativelanguage.googleapis.com/v1beta/openai", keyHint: "AIza…", keyUrl: "https://aistudio.google.com/apikey", prefer: ["gemini-flash-latest", "gemini-pro-latest"] },
   { id: "deepseek", name: "DeepSeek", kind: "openai", base: "https://api.deepseek.com/v1", keyHint: "sk-…", keyUrl: "https://platform.deepseek.com/api_keys" },
   { id: "openrouter", name: "OpenRouter", kind: "openai", base: "https://openrouter.ai/api/v1", keyHint: "sk-or-…", keyUrl: "https://openrouter.ai/keys" },
   { id: "nvidia", name: "NVIDIA build", kind: "openai", base: "https://integrate.api.nvidia.com/v1", keyHint: "nvapi-…", keyUrl: "https://build.nvidia.com", prefer: ["google/gemma-4-31b-it"] },

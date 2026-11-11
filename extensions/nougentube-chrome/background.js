@@ -32,9 +32,12 @@ async function listModels(id, key, base) {
   const r = await fetch(b + "/models" + (p.kind === "anthropic" ? "?limit=200" : ""), { headers: authHeaders(p, key), signal: AbortSignal.timeout(20000) });
   const t = await r.text();
   if (!r.ok) throw new Error(`${p.name} said ${r.status}: ${t.slice(0, 160)}`);
-  const j = JSON.parse(t), ids = (j.data || j.models || []).map(m => m.id || m.name).filter(Boolean);
-  if (!ids.length) throw new Error(p.name + " returned no models for this key");
-  return ids;
+  const j = JSON.parse(t), all = (j.data || j.models || []).map(m => String(m.id || m.name || "").replace(/^models\//, "")).filter(Boolean);
+  if (!all.length) throw new Error(p.name + " returned no models for this key");
+  // A provider's list mixes in models that cannot hold a chat (embeddings, moderation, speech, images). Offer only chat models,
+  // unless that would leave nothing (a custom endpoint may name its models anything).
+  const chat = all.filter(m => !/embed|moderation|whisper|tts|transcri|dall-e|image|imagen|veo|sora|audio|realtime|live|rerank|guard|robotics|aqa|nano-banana|computer-use/i.test(m));
+  return chat.length ? chat : all;
 }
 
 chrome.runtime.onMessage.addListener((msg, _s, reply) => {
