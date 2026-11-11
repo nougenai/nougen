@@ -25,7 +25,7 @@ async function init() {
 function card(p) {
   const s = prov[p.id] || {};
   return `<div class="card" id="c-${p.id}">
-    <div class="row"><span class="name">${esc(p.name)}</span>${p.keyUrl ? `<a href="${p.keyUrl}" target="_blank" rel="noopener">Get a key</a>` : ""}<span class="st ${s.model ? "ok" : ""}" id="st-${p.id}">${s.model ? "Ready: " + esc(s.model) : "Not set up"}</span></div>
+    <div class="row"><span class="name">${esc(p.name)}</span>${p.keyUrl ? `<a href="${p.keyUrl}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Get a key</a>` : ""}<span class="st ${s.model ? "ok" : ""}" id="st-${p.id}">${s.model ? "Ready: " + esc(s.model) : "Not set up"}</span></div>
     ${p.custom ? `<div class="row" style="margin-top:8px"><input id="b-${p.id}" type="url" placeholder="Base URL, e.g. https://example.com/v1" value="${esc(s.base || "")}"></div>` : ""}
     <div class="row" style="margin-top:8px">
       <input id="k-${p.id}" type="password" autocomplete="off" placeholder="${esc(s.key ? "Key saved. Paste a new one to replace it." : p.keyHint || "API key")}">

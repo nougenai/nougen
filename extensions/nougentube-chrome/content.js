@@ -189,6 +189,8 @@
   @supports (corner-shape:squircle){.p[data-theme=arcade],.p[data-theme=arcade] :is(button,select,input,textarea,.chip,.msg,.vf,.card,.menu,.ib){corner-shape:squircle}}
   @media (prefers-contrast:more){.p[data-theme]{--ln:var(--lns);--mu:var(--tx)}.p :is(button,select,input,textarea,.chip,.vf,.msg,.card,.menu){border-width:2px}.p :is(button,select,input,a,summary,[tabindex]):focus-visible{outline-width:3px}}
   @media (forced-colors:active){:is(button,select,input,textarea,.chip,.vf,.msg,.card,.menu){border:1px solid ButtonText}.tabs button.on,.chip.on,button.go{outline:2px solid Highlight;outline-offset:-2px}a,.t{color:LinkText}.vok{color:Highlight}.bar::after{background:Highlight}}
+  .p{color-scheme:dark;accent-color:var(--ac)}.p[data-theme=light]{color-scheme:light}
+  :host([data-flow=below]) .p{height:min(640px,calc(100dvh - 120px))}
   :is(button,select,input,a,summary,[tabindex]):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--ln)}
   .lg{width:26px;height:26px;border-radius:var(--r);background:linear-gradient(135deg,var(--ac),var(--ac2));display:grid;place-items:center;font-weight:800;color:var(--ink);font-size:13px}
@@ -203,7 +205,7 @@
   .chip{background:var(--card);border:1px solid var(--ln);border-radius:calc(var(--r) * 99);padding:4px 10px;cursor:pointer;font-size:12px;white-space:nowrap}.chip.on{border-color:var(--ac);color:var(--ac)}
   .bd{overflow-y:auto;overscroll-behavior:contain;flex:1 1 auto;min-height:0;padding:6px 4px 12px;scrollbar-width:thin}
   #wrap{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}#wrap[hidden]{display:none}
-  .p{height:calc(100vh - 140px);min-height:360px}
+  .p{height:min(calc(100dvh - 140px),1400px);min-height:360px}
   .ln{display:flex;gap:10px;padding:7px 10px;border-radius:8px;cursor:pointer;position:relative}
   .ln:hover{background:var(--card)}.ln.now{background:color-mix(in srgb,var(--ac) 16%,transparent)}
   .ln.hl{box-shadow:inset 3px 0 var(--ac2)}
@@ -247,10 +249,24 @@
   .ft{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--ln)}.ft input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:var(--r);padding:7px 10px}
   .err{color:var(--bad)}`;
 
+  // YouTube hides its side column in the one-column layout (narrow windows, high browser zoom). The panel then sits
+  // under the player instead of vanishing with the column. Like Electron's screen API: fit what is actually available.
+  function slot() {
+    const sec = document.querySelector("#secondary-inner, #secondary");
+    if (sec && sec.getClientRects().length) return { el: sec, flow: "side" };
+    const below = document.querySelector("#below");
+    return below ? { el: below, flow: "below" } : null;
+  }
+  function place() {
+    if (!host) return;
+    const s = slot(); if (!s) return;
+    if (host.parentElement !== s.el) s.el.prepend(host);
+    host.dataset.flow = s.flow; host.style.position = s.flow === "side" ? "sticky" : "relative"; host.style.top = s.flow === "side" ? "72px" : "0";
+  }
   function mount() {
     if (host?.isConnected) return true;
-    const sec = document.querySelector("#secondary-inner, #secondary"); if (!sec) return false;
-    host = document.createElement("div"); host.id = "nougentube"; host.style.cssText = "position:sticky;top:72px;z-index:5;display:block"; sec.prepend(host);
+    const where = slot(); if (!where) return false;
+    host = document.createElement("div"); host.id = "nougentube"; host.style.cssText = "top:72px;z-index:5;display:block"; where.el.prepend(host); place();
     root = host.attachShadow({ mode: "open" });
     root.innerHTML = `<style>${CSS}</style><div class="p">
       <div class="hd"><div class="lg">N</div><div class="ti">NouGenTube<small id="mdl"></small></div>
@@ -270,6 +286,10 @@
     chrome.storage.onChanged.addListener((ch, area) => { if (area === "sync" && ch.theme) { S.theme = ch.theme.newValue || "auto"; applyTheme(); } });
     new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["dark"] });
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);   // the system changed while the page is open
+    if (!mount.watching) {   // the window or zoom changed: YouTube may have switched between one and two columns
+      mount.watching = true; let t; const again = () => { clearTimeout(t); t = setTimeout(place, 150); };
+      addEventListener("resize", again); const flexy = document.querySelector("ytd-watch-flexy"); if (flexy) new MutationObserver(again).observe(flexy, { attributes: true });
+    }
     root.getElementById("key").onclick = () => chrome.runtime.sendMessage({ type: "openOptions" });
     root.addEventListener("click", e => { const a = e.target.closest("[data-seek]"); if (a) { e.stopPropagation(); seek(+a.dataset.seek); } });
     chrome.runtime.sendMessage({ type: "models" }, r => { if (r?.ok) { S.models = r.models; S.model = r.current; S.labels = r.labels || {}; S.bridge = r.nougenopen; S.ollamaErr = r.ollamaErr; } root.getElementById("mdl").textContent = label(S.model || ""); render(); });
@@ -413,7 +433,7 @@
     let i = 0; while (i + 1 < S.paras.length && S.paras[i + 1].t <= v.currentTime + 0.3) i++;
     if (i === S.cur) return; S.cur = i;
     root.querySelectorAll(".ln.now").forEach(e => e.classList.remove("now"));
-    const el = root.querySelector(`.ln[data-i="${i}"]`); if (el) { el.classList.add("now"); if (S.follow && !S.q) el.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    const el = root.querySelector(`.ln[data-i="${i}"]`); if (el) { el.classList.add("now"); if (S.follow && !S.q) el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }
   }
   setInterval(tick, 500);
 
@@ -657,8 +677,8 @@
     const k = morphCheck(M), row = (ok, t) => `<div class="vr"><span class="${ok ? "vok" : "vno"}">${ok ? "✓" : "!"}</span><span>${t}</span></div>`;
     const kn = M.shards.filter(h => h.kind !== "video"), vd = M.shards.filter(h => h.kind === "video");
     const W = M.web || [], wmap = Object.fromEntries(W.map(w => [w.ref, w]));
-    const wlink = h => h.replace(/\[(w\d+)\]/g, (m, r) => wmap[r] ? `<a href="${esc(safeUrl(wmap[r].url))}" target="_blank" rel="noopener" title="${esc(wmap[r].title)}">[${r}]</a>` : m);
-    const wgrp = W.length ? `<div class="mu" style="padding:6px 0 2px">Latest on the web${M.webVia ? " (" + esc(M.webVia) + ")" : ""}</div>` + W.map(w => `<div class="vr"><span class="vok">${w.ref}</span><span><a href="${esc(safeUrl(w.url))}" target="_blank" rel="noopener">${esc(w.title || w.url)}</a></span></div>`).join("") : "";
+    const wlink = h => h.replace(/\[(w\d+)\]/g, (m, r) => wmap[r] ? `<a href="${esc(safeUrl(wmap[r].url))}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="${esc(wmap[r].title)}">[${r}]</a>` : m);
+    const wgrp = W.length ? `<div class="mu" style="padding:6px 0 2px">Latest on the web${M.webVia ? " (" + esc(M.webVia) + ")" : ""}</div>` + W.map(w => `<div class="vr"><span class="vok">${w.ref}</span><span><a href="${esc(safeUrl(w.url))}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">${esc(w.title || w.url)}</a></span></div>`).join("") : "";
     const grp = (t, a) => a.length ? `<div class="mu" style="padding:6px 0 2px">${t}</div>` + a.map(h => `<div class="vr"><span class="vok">${esc(refOf(h))}</span><span>${esc(h.title)}</span></div>`).join("") : "";
     bd.innerHTML = `<div class="acts"><span class="chip on" id="mc">Copy morph plan</span><span class="chip" id="mb" title="Copy the plan as a prompt you can paste into a coding agent">Copy build prompt</span><span class="chip" id="ms" title="Save this plan to NouGenShards">Shard it</span></div>` +
       (M.prior.length ? `<div class="mu">This video was morphed before: ${M.prior.map(h => esc(refOf(h))).join(", ")}.</div>` : "") +
@@ -856,7 +876,7 @@
       const head = '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(it.title || it.id) + "</span>";
       const meta = it.status === "done" ? '<div class="mu" style="font-size:12px">' + (it.src === "audio" ? "Transcribed from the audio on this computer, so check names and numbers. " : "") + (it.outside ? '<span class="err">' + it.outside + " timestamp" + (it.outside === 1 ? "" : "s") + " fall outside the video.</span> " : "Timestamps inside the video. ") + (it.shard ? "Saved " + esc(it.shard) + "." : it.shardErr ? '<span class="err">Not saved: ' + esc(it.shardErr) + "</span>" : "") + (it.model ? " · " + esc(it.model) : "") + "</div>" : it.status === "error" ? '<div class="mu err" style="font-size:12px">' + esc(it.err) + "</div>" : it.stage ? '<div class="mu" style="font-size:12px">' + esc(it.stage) + "</div>" : "";
       const body = it.status === "done" ? '<details class="vf"><summary class="vh" style="cursor:pointer">Read the summary</summary><div class="md">' + md(it.text) + '</div><div class="acts"><span class="chip" data-cp="' + it.id + '">Copy</span>' + (it.shard ? "" : '<span class="chip" data-sh="' + it.id + '">Shard</span>') + "</div></details>" : "";
-      return '<div style="padding:6px 0;border-bottom:1px solid var(--ln)"><div class="vr">' + icon + head + '<a class="mu" href="https://www.youtube.com/watch?v=' + it.id + '" target="_blank" rel="noopener" title="Open the video">↗</a><span class="chip" data-rm="' + it.id + '" title="Remove">×</span></div>' + meta + body + "</div>";
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--ln)"><div class="vr">' + icon + head + '<a class="mu" href="https://www.youtube.com/watch?v=' + it.id + '" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" title="Open the video">↗</a><span class="chip" data-rm="' + it.id + '" title="Remove">×</span></div>' + meta + body + "</div>";
     };
     bd.innerHTML = (S.bridge ? "" : '<div class="mu err">Batch needs the NouGenOpen bridge, which fetches transcripts and transcribes audio on this computer. Start <b>nougen-open serve</b> and reopen this tab.</div>') +
       '<textarea id="bl" rows="3" style="width:100%;box-sizing:border-box;background:var(--bg);color:inherit;border:1px solid var(--ln);border-radius:var(--r);padding:8px;font:inherit" placeholder="Paste YouTube links, one per line (up to ' + BATCH_MAX + '), or a playlist link">' + esc(B.draft || "") + "</textarea>" +

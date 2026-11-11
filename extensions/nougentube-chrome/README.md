@@ -64,6 +64,12 @@ Following Electron's nativeTheme model, "Auto" matches YouTube's own theme when 
 
 Accessibility follows the system too. With high contrast on (`prefers-contrast: more`) borders switch to the strong border colour and secondary text to full strength; in Windows forced-colors mode every control gets a visible system-colour border and the selected tab or action a highlight outline.
 
+## Windows, displays and links
+Three more lessons from Electron's system-preferences, screen and shell docs, applied the browser way:
+- **Fit the space you actually have.** YouTube hides its side column in the one-column layout (a narrow window, or a high browser zoom). The panel used to vanish with it; it now sits under the player there, moves back when the window widens again, and is capped at 1400 px on very tall displays. Checked at 1280x560, 1920x1080 at 1x and 2x, 3840x2160 and 900x800.
+- **Native controls follow the theme.** `color-scheme` and `accent-color` are set per theme, so scrollbars and form controls match instead of staying light, and the scroll that follows the video honours "reduce motion".
+- **Links leave quietly.** Every link that opens a new tab is `noopener noreferrer` with no referrer, so a site you open from a Morph source never learns which video you were watching. Only http and https links are used. `tests/links.test.mjs` fails if a new external link forgets this.
+
 ## Icons
 `icons/` holds the extension icon at 16, 32, 48 and 128 px: the same "N" on the Mono Violet gradient as the panel badge, drawn on a superellipse so it matches the Arcade corners. `python icons/make_icons.py` redraws them (needs Pillow). Several sizes are supplied for the same reason Electron's nativeImage takes several scale factors: each place that shows the icon picks the size it needs.
 
