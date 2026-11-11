@@ -38,43 +38,68 @@
     walk(j); return out.length ? { lines: out, lang: "auto" } : null;
   }
   // Tier 0: YouTube's own transcript panel (carries the player's PO token, so it survives API gating).
-  async function viaPanel() {
-    const wait = ms => new Promise(r => setTimeout(r, ms)); let b;
-    if (document.hidden) await new Promise(r => document.addEventListener("visibilitychange", function f() { if (!document.hidden) { document.removeEventListener("visibilitychange", f); r(); } }));
-    for (let i = 0; i < 40 && !(b = document.querySelector("ytd-video-description-transcript-section-renderer button")); i++) await wait(250);
-    if (!b) return null;
-    // YouTube ships two transcript panels: the classic one (target-id contains "transcript",
-    // ytd-transcript-segment-renderer rows) and the modern one (often no target-id at all,
-    // transcript-segment-view-model rows, a "Search transcript" box). Match either.
-    const EP = "ytd-engagement-panel-section-list-renderer";
-    const PANELS = [`${EP}[target-id*=transcript]`, `${EP}:has(transcript-segment-view-model)`,
-      `${EP}:has(ytd-transcript-segment-renderer)`, `${EP}:has(textarea[placeholder*="ranscript"])`].join(",");
-    const SEGS = "ytd-transcript-segment-renderer, transcript-segment-view-model";
-    const panel = () => [...document.querySelectorAll(PANELS)].find(p => p.getAttribute("visibility") === "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED");
-    const wasOpen = !!panel() && !!document.querySelector(SEGS);
-    const style = document.createElement("style"); style.textContent = `${PANELS}{opacity:0!important;pointer-events:none!important}`;
-    if (!wasOpen) document.head.append(style);
-    b.click(); let segs = [];
-    for (let i = 0; i < 60 && !(segs = document.querySelectorAll(SEGS)).length; i++) await wait(250);
-    await wait(400); segs = document.querySelectorAll(SEGS);   // let the list finish rendering
-    const read = s => s.tagName === "YTD-TRANSCRIPT-SEGMENT-RENDERER"
+  // Resolved at page runtime: a MutationObserver follows YouTube as it renders, clicks
+  // "Show transcript" whenever that button exists for the current video, and reads the rows
+  // once their count holds still. No fixed waits, so in-app navigation can't race it.
+  // Handles both layouts: classic (ytd-transcript-segment-renderer, target-id*=transcript)
+  // and modern (transcript-segment-view-model, often no target-id).
+  const EP = "ytd-engagement-panel-section-list-renderer";
+  const PANELS = [`${EP}[target-id*=transcript]`, `${EP}:has(transcript-segment-view-model)`,
+    `${EP}:has(ytd-transcript-segment-renderer)`, `${EP}:has(textarea[placeholder*="ranscript"])`].join(",");
+  const SEGS = "ytd-transcript-segment-renderer, transcript-segment-view-model";
+  const BTN = "ytd-video-description-transcript-section-renderer button";
+  let lastFirst = "";   // first row of the previous video, so a stale list is never read as the new one
+  const readRows = () => [...document.querySelectorAll(SEGS)].map(s => {
+    const [ts, tx] = s.tagName === "YTD-TRANSCRIPT-SEGMENT-RENDERER"
       ? [s.querySelector(".segment-timestamp")?.textContent, s.querySelector(".segment-text")?.textContent]
-      : [s.querySelector(".ytwTranscriptSegmentViewModelTimestamp")?.textContent,
-         s.querySelector(".ytAttributedStringHost, span")?.textContent];
-    const out = [...segs].map(s => { const [ts, tx] = read(s);
-      return { t: parseTs((ts || "0").trim()), text: (tx || "").replace(/\s+/g, " ").trim() }; }).filter(l => l.text);
-    if (!wasOpen) {
-      // Close YouTube's panel again. Its newer layouts keep rendering even after they report
-      // HIDDEN, so the panel stays display:none until the viewer opens YouTube's own
-      // transcript with a real click; otherwise the raw list leaks under our panel.
-      panel()?.querySelector("#visibility-button button, button[aria-label*='lose' i]")?.click();
-      style.textContent = `${PANELS}{display:none!important}`;
-      const release = e => { if (e.isTrusted && e.target.closest?.("ytd-video-description-transcript-section-renderer")) {
-        style.remove(); document.removeEventListener("click", release, true); } };
-      document.addEventListener("click", release, true);
-      document.addEventListener("yt-navigate-start", () => { style.remove(); document.removeEventListener("click", release, true); }, { once: true });
-    }
-    return out.length ? { lines: out, lang: "YouTube" } : null;
+      : [s.querySelector(".ytwTranscriptSegmentViewModelTimestamp")?.textContent, s.querySelector(".ytAttributedStringHost, span")?.textContent];
+    return { t: parseTs((ts || "0").trim()), text: (tx || "").replace(/\s+/g, " ").trim() };
+  }).filter(l => l.text);
+
+  function viaPanel(vid, limitMs = 45000) {
+    const curVid = () => new URLSearchParams(location.search).get("v");
+    document.querySelectorAll("style[data-nougentube]").forEach(x => x.remove());
+    const userOpen = !!document.querySelector(SEGS) && [...document.querySelectorAll(PANELS)].some(p => p.getAttribute("visibility") === "ENGAGEMENT_PANEL_VISIBILITY_EXPANDED");
+    const style = document.createElement("style"); style.dataset.nougentube = "1";
+    style.textContent = `${PANELS}{opacity:0!important;pointer-events:none!important}`;
+    if (!userOpen) document.head.append(style);
+    return new Promise(resolve => {
+      let clickedAt = 0, lastCount = -1, stableSince = 0, done = false, raf = 0;
+      const finish = rows => {
+        if (done) return; done = true; obs.disconnect(); clearInterval(tick); clearTimeout(limit);
+        if (!userOpen) {
+          document.querySelector(`${PANELS.split(",")[0]} #visibility-button button`)?.click();
+          style.textContent = `${PANELS}{display:none!important}`;   // newer panels render even when "HIDDEN"
+          const release = e => { if (e.isTrusted && e.target.closest?.("ytd-video-description-transcript-section-renderer")) { style.remove(); document.removeEventListener("click", release, true); } };
+          document.addEventListener("click", release, true);
+          document.addEventListener("yt-navigate-start", () => { style.remove(); document.removeEventListener("click", release, true); }, { once: true });
+        }
+        if (rows?.length) lastFirst = rows[0].text;
+        resolve(rows?.length ? { lines: rows, lang: "YouTube" } : null);
+      };
+      const step = () => {
+        raf = 0;
+        if (done) return;
+        if (curVid() !== vid) return finish(null);           // viewer moved on
+        if (document.hidden) return;                          // YouTube renders nothing off-screen
+        const rows = readRows();
+        const fresh = rows.length && rows[0].text !== lastFirst;
+        if (fresh) {
+          if (rows.length !== lastCount) { lastCount = rows.length; stableSince = performance.now(); }
+          else if (performance.now() - stableSince > 500) return finish(rows);
+          return;
+        }
+        const b = document.querySelector(BTN);
+        if (b && performance.now() - clickedAt > 4000) { clickedAt = performance.now(); b.click(); }
+      };
+      const kick = () => { if (!raf) raf = requestAnimationFrame(step); };
+      const obs = new MutationObserver(kick);
+      obs.observe(document.body, { childList: true, subtree: true });
+      const tick = setInterval(kick, 600);                    // also re-check when the DOM is quiet
+      document.addEventListener("visibilitychange", kick);
+      const limit = setTimeout(() => finish(null), document.hidden ? 864e5 : limitMs);
+      kick();
+    });
   }
   // merge tiny caption events into readable ~20s paragraphs
   function paragraphs(lines) {
@@ -326,7 +351,7 @@
     try {
       const to = (pr, ms) => Promise.race([pr.catch(e => (console.warn("[NouGenTube]", e), null)), new Promise(r => setTimeout(() => r(null), ms))]);
       S.title = document.title.replace(/^\(\d+\)\s*/, "").replace(/ - YouTube$/, "");
-      let r = await to(viaPanel(), document.hidden ? 864e5 : 25000); console.debug("[NouGenTube] panel tier:", r?.lines.length);
+      let r = await to(viaPanel(vid), 864e5); console.debug("[NouGenTube] panel tier:", r?.lines.length);
       if (!r) { const p = await to(playerResponse(vid), 10000);
         if (p) { S.title = p.pr?.videoDetails?.title || S.title; r = (await to(viaTimedtext(p.pr), 8000)) || (await to(viaInnertube(p), 8000)); } }
       if (vid !== S.vid) return;
