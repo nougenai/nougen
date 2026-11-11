@@ -180,20 +180,24 @@
   let host, root;
   const CSS = `
   :host{all:initial} *{box-sizing:border-box}
-  .p{--bg:#0f0f12;--card:#17171c;--ln:#2a2a33;--tx:#e9e9ee;--mu:#9a9aa8;--ac:#7c5cff;--ac2:#22d3ee;
-     font:14px/1.5 "Roboto",system-ui,sans-serif;color:var(--tx);background:var(--bg);border:1px solid var(--ln);border-radius:14px;margin:0 0 12px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 140px)}
-  @media (prefers-color-scheme:light){.p{--bg:#fff;--card:#f5f5f8;--ln:#e3e3ea;--tx:#141418;--mu:#5e5e6b}}
+  .p{--bg:#0b0911;--card:#171321;--raised:#211a30;--ln:#332b43;--lns:#7d7094;--tx:#f5f1ff;--mu:#a79cb9;--ac:#a47bff;--ac2:#d2bbff;--ok:#4cc38a;--warn:#e6aa3a;--bad:#ff8a8a;--ink:#0b0911;--focus:#d2bbff;--r:8px;--rp:12px;--ow:1px;
+     font:14px/1.5 "Geist","Roboto",system-ui,sans-serif;color:var(--tx);background:var(--bg);border:var(--ow) solid var(--ln);border-radius:var(--rp);margin:0 0 12px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 140px)}
+  .p[data-theme=light]{--bg:#f8f6fc;--card:#ffffff;--raised:#f0ecf8;--ln:#ddd5ec;--lns:#7d7094;--tx:#211a2f;--mu:#5e5470;--ac:#6941c6;--ac2:#4b2e9c;--ok:#1b7f4e;--warn:#8a5a00;--bad:#b42318;--ink:#ffffff;--focus:#6941c6;--r:8px;--rp:12px;--ow:1px}
+  .p[data-theme=arcade]{--bg:#17102a;--card:#261a44;--raised:#33245a;--ln:#4a3777;--lns:#9a82cc;--tx:#fff3fe;--mu:#cbbbe3;--ac:#c47dff;--ac2:#ff7ac0;--ok:#5cf2b6;--warn:#ffd166;--bad:#ff7d98;--ink:#17102a;--focus:#ffe066;--r:12px;--rp:16px;--ow:1px}
+  .p[data-theme=hardcade]{--bg:#080711;--card:#151024;--raised:#1f1733;--ln:#3a2a5c;--lns:#8a6cc4;--tx:#f8f2ff;--mu:#b9acce;--ac:#b14cff;--ac2:#00e5ff;--ok:#b6ff3b;--warn:#ffb020;--bad:#ff5c78;--ink:#080711;--focus:#00e5ff;--r:0px;--rp:2px;--ow:2px}
+  .p[data-theme=hardcade] .tabs button{text-transform:uppercase;letter-spacing:.06em;font-size:12px}
+  :is(button,select,input,a,summary,[tabindex]):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .hd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--ln)}
-  .lg{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--ac),var(--ac2));display:grid;place-items:center;font-weight:800;color:#fff;font-size:13px}
-  .ti{font-weight:700;font-size:15px;flex:1}.ti small{color:var(--mu);font-weight:400;font-size:11px;margin-left:6px}
+  .lg{width:26px;height:26px;border-radius:var(--r);background:linear-gradient(135deg,var(--ac),var(--ac2));display:grid;place-items:center;font-weight:800;color:var(--ink);font-size:13px}
+  .ti{font-weight:700;font-size:15px;flex:1 1 0;min-width:0;line-height:1.25}.ti small{display:block;color:var(--mu);font-weight:400;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   button,select,input{font:inherit;color:inherit}
   .ib{background:none;border:0;cursor:pointer;color:var(--mu);padding:4px 6px;border-radius:6px}.ib:hover{background:var(--card);color:var(--tx)}
   .tabs{display:flex;border-bottom:1px solid var(--ln)}.tabs button{flex:1;background:none;border:0;padding:10px 0;cursor:pointer;color:var(--mu);font-weight:600;border-bottom:2px solid transparent}
   .tabs button.on{color:var(--tx);border-color:var(--ac)}
   .tb{display:flex;gap:6px;padding:8px 12px;align-items:center;border-bottom:1px solid var(--ln)}
-  .tb input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:6px 10px}
-  .tb select{background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:5px;max-width:150px}
-  .chip{background:var(--card);border:1px solid var(--ln);border-radius:999px;padding:4px 10px;cursor:pointer;font-size:12px;white-space:nowrap}.chip.on{border-color:var(--ac);color:var(--ac)}
+  .tb input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:var(--r);padding:6px 10px}
+  .tb select{background:var(--card);border:1px solid var(--ln);border-radius:var(--r);padding:5px;max-width:150px}
+  .chip{background:var(--card);border:1px solid var(--ln);border-radius:calc(var(--r) * 99);padding:4px 10px;cursor:pointer;font-size:12px;white-space:nowrap}.chip.on{border-color:var(--ac);color:var(--ac)}
   .bd{overflow-y:auto;overscroll-behavior:contain;flex:1 1 auto;min-height:0;padding:6px 4px 12px;scrollbar-width:thin}
   #wrap{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}#wrap[hidden]{display:none}
   .p{height:calc(100vh - 140px);min-height:360px}
@@ -202,17 +206,17 @@
   .ln.hl{box-shadow:inset 3px 0 var(--ac2)}
   .ts{color:var(--ac2);font-variant-numeric:tabular-nums;font-size:12px;min-width:42px;padding-top:2px;cursor:pointer;background:none;border:0;text-align:left}
   .st{position:absolute;right:6px;top:6px;opacity:0}.ln:hover .st{opacity:1}
-  mark{background:#facc15;color:#000;border-radius:2px}
+  mark{background:var(--warn);color:var(--ink);border-radius:2px}
   .md{padding:8px 14px}
   .mm{margin-left:calc(var(--d) * 14px);border-left:2px solid color-mix(in srgb,var(--ac) 45%,transparent);padding:2px 0 2px 10px}
   .mm>summary{cursor:pointer;font-weight:600;list-style:none}.mm>summary::before{content:"▸ ";color:var(--ac)}.mm[open]>summary::before{content:"▾ "}
   .mm.leaf{font-weight:400}.mmw>details[style*="--d:0"]>summary{font-size:15px;color:var(--ac2)}
-  .menu{position:absolute;right:10px;top:44px;background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:4px;z-index:9;display:flex;flex-direction:column;min-width:170px}
+  .menu{position:absolute;right:10px;top:44px;background:var(--card);border:1px solid var(--ln);border-radius:var(--r);padding:4px;z-index:9;display:flex;flex-direction:column;min-width:170px}
   .menu[hidden]{display:none}.menu button{background:none;border:0;text-align:left;padding:7px 10px;border-radius:6px;cursor:pointer}.menu button:hover{background:var(--bg)}
   .hd{position:relative}.md h3{font-size:14px;margin:12px 0 4px}.md ul{padding-left:18px;margin:4px 0}.md li{margin:3px 0}
   .md a.t{color:var(--ac2);cursor:pointer;text-decoration:none;font-variant-numeric:tabular-nums}
   .mu{color:var(--mu);font-size:12px;padding:10px 14px}
-  .go{background:linear-gradient(135deg,var(--ac),#5b8cff);color:#fff;border:0;border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:600}
+  .go{background:var(--ac);color:var(--ink);border:0;border-radius:var(--r);padding:7px 14px;cursor:pointer;font-weight:600}
   .ld{padding:12px 14px}
   .lst{display:flex;align-items:center;gap:8px;color:var(--mu);font-size:12.5px}.lst b{color:var(--tx);font-weight:600}
   .lst .el{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mu)}
@@ -220,7 +224,7 @@
   .bar::after{content:"";position:absolute;top:0;bottom:0;left:0;width:40%;background:linear-gradient(90deg,transparent,var(--ac),var(--ac2),transparent);animation:ngt-slide 1.2s ease-in-out infinite}
   @keyframes ngt-slide{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
   .spin{width:14px;height:14px;flex:none;border:2px solid color-mix(in srgb,var(--ac) 30%,transparent);border-top-color:var(--ac);border-radius:50%;animation:ngt-rot .8s linear infinite;display:inline-block;vertical-align:-2px}
-  .go .spin{border-color:rgba(255,255,255,.35);border-top-color:#fff;margin-right:6px}
+  .go .spin{border-color:color-mix(in srgb,var(--ink) 35%,transparent);border-top-color:var(--ink);margin-right:6px}
   @keyframes ngt-rot{to{transform:rotate(360deg)}}
   .skel{height:11px;border-radius:6px;margin:12px 14px;background:linear-gradient(90deg,var(--card) 0%,var(--ln) 50%,var(--card) 100%);background-size:200% 100%;animation:ngt-sh 1.3s linear infinite}
   .skel.ts{width:38px;display:inline-block;margin:0 0 0 14px}
@@ -230,15 +234,15 @@
   @keyframes ngt-bo{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
   .tail{padding:2px 14px 10px}
   @media (prefers-reduced-motion:reduce){.bar::after,.spin,.skel,.dots span{animation:none}}
-  .note{padding:7px 12px;font-size:12.5px;border-bottom:1px solid var(--ln);color:#34d399}.note.bad{color:#fbbf24}.note[hidden]{display:none}
+  .note{padding:7px 12px;font-size:12.5px;border-bottom:1px solid var(--ln);color:var(--ok)}.note.bad{color:var(--warn)}.note[hidden]{display:none}
   .hd .chip{font:inherit;font-size:12px;color:var(--tx)}
   .acts{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px 2px}
-  .vf{margin:6px 12px 12px;padding:10px 12px;border:1px solid var(--ln);border-radius:10px;background:var(--card);font-size:12.5px}
-  .vh{font-weight:700;margin-bottom:6px}.vr{display:flex;gap:8px;padding:2px 0}.vok{color:#34d399;font-weight:700}.vno{color:#fbbf24;font-weight:700}
+  .vf{margin:6px 12px 12px;padding:10px 12px;border:1px solid var(--ln);border-radius:var(--r);background:var(--card);font-size:12.5px}
+  .vh{font-weight:700;margin-bottom:6px}.vr{display:flex;gap:8px;padding:2px 0}.vok{color:var(--ok);font-weight:700}.vno{color:var(--warn);font-weight:700}
   .md table{border-collapse:collapse;margin:6px 0;font-size:12.5px}.md td,.md th{border:1px solid var(--ln);padding:4px 6px;text-align:left}
-  .msg{margin:8px 12px;padding:8px 12px;border-radius:10px;background:var(--card)}.msg.u{background:color-mix(in srgb,var(--ac) 20%,transparent);margin-left:40px}
-  .ft{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--ln)}.ft input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:7px 10px}
-  .err{color:#f87171}`;
+  .msg{margin:8px 12px;padding:8px 12px;border-radius:var(--r);background:var(--card)}.msg.u{background:color-mix(in srgb,var(--ac) 20%,transparent);margin-left:40px}
+  .ft{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--ln)}.ft input{flex:1;background:var(--card);border:1px solid var(--ln);border-radius:var(--r);padding:7px 10px}
+  .err{color:var(--bad)}`;
 
   function mount() {
     if (host?.isConnected) return true;
@@ -247,7 +251,7 @@
     root = host.attachShadow({ mode: "open" });
     root.innerHTML = `<style>${CSS}</style><div class="p">
       <div class="hd"><div class="lg">N</div><div class="ti">NouGenTube<small id="mdl"></small></div>
-        <button class="chip" id="hs" title="Save this video to NouGenShards: the full transcript, plus the summary if you have made one">Shard</button><button class="ib" id="key" title="Settings: provider keys and routes">⚙</button><button class="ib" id="cp" title="Copy transcript">⧉</button><button class="ib" id="dl" title="Export">⤓</button><div class="menu" id="menu" hidden><button data-x="md">Markdown (everything)</button><button data-x="txt">Transcript .txt</button><button data-x="srt">Subtitles .srt</button></div>
+        <button class="chip" id="hs" title="Save this video to NouGenShards: the full transcript, plus the summary if you have made one">Shard</button><button class="ib" id="th" title="Theme">◐</button><button class="ib" id="key" title="Settings: provider keys and routes">⚙</button><button class="ib" id="cp" title="Copy transcript">⧉</button><button class="ib" id="dl" title="Export">⤓</button><div class="menu" id="menu" hidden><button data-x="md">Markdown (everything)</button><button data-x="txt">Transcript .txt</button><button data-x="srt">Subtitles .srt</button></div>
         <button class="ib" id="col" title="Collapse">▾</button></div>
       <div class="note" id="note" hidden></div><div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button></div>
       <div class="tb" id="tb"></div><div class="bd" id="bd"></div><div id="ft"></div></div></div>`;
@@ -257,12 +261,25 @@
     root.getElementById("dl").onclick = e => { e.stopPropagation(); const m = root.getElementById("menu"); m.hidden = !m.hidden; };
     root.getElementById("menu").onclick = e => { const x = e.target.dataset.x; if (x) { root.getElementById("menu").hidden = true; download(x); } };
     root.getElementById("hs").onclick = () => shardIt("hs");
+    root.getElementById("th").onclick = () => { const i = THEMES.indexOf(S.theme || "auto"); S.theme = THEMES[(i + 1) % THEMES.length];
+      chrome.storage.sync.set({ theme: S.theme }); applyTheme(); toast("Theme: " + THEME_NAMES[S.theme]); };
+    chrome.storage.sync.get("theme").then(v => { S.theme = v.theme || "auto"; applyTheme(); });
+    chrome.storage.onChanged.addListener((ch, area) => { if (area === "sync" && ch.theme) { S.theme = ch.theme.newValue || "auto"; applyTheme(); } });
+    new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["dark"] });
     root.getElementById("key").onclick = () => chrome.runtime.sendMessage({ type: "openOptions" });
     root.addEventListener("click", e => { const a = e.target.closest("[data-seek]"); if (a) { e.stopPropagation(); seek(+a.dataset.seek); } });
-    chrome.runtime.sendMessage({ type: "models" }, r => { if (r?.ok) { S.models = r.models; S.model = r.current; S.labels = r.labels || {}; S.bridge = r.nougenopen; S.ollamaErr = r.ollamaErr; } root.getElementById("mdl").textContent = "· " + label(S.model || ""); render(); });
+    chrome.runtime.sendMessage({ type: "models" }, r => { if (r?.ok) { S.models = r.models; S.model = r.current; S.labels = r.labels || {}; S.bridge = r.nougenopen; S.ollamaErr = r.ollamaErr; } root.getElementById("mdl").textContent = label(S.model || ""); render(); });
     return true;
   }
   const $ = id => root.getElementById(id);
+  // Mono Violet colorways. Auto follows YouTube's own light or dark setting.
+  const THEMES = ["auto", "dark", "light", "arcade", "hardcade"];
+  const THEME_NAMES = { auto: "Auto (matches YouTube)", dark: "Mono Violet dark", light: "Mono Violet light", arcade: "Arcade", hardcade: "Hardcade" };
+  function applyTheme() { const p = root && root.querySelector(".p"); if (!p) return; const t = S.theme || "auto";
+    p.dataset.theme = t === "auto" ? (document.documentElement.hasAttribute("dark") || matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : t;
+    const b = root.getElementById("th"); if (b) b.title = "Theme: " + THEME_NAMES[t] + " (click to change)"; }
+  function toast(text) { const n = root.getElementById("note"); if (!n) return; n.textContent = text; n.hidden = false; n.className = "note";
+    clearTimeout(toast.t); toast.t = setTimeout(() => note(), 1600); }
 
   // timestamps like [12:34] in model output -> clickable seek links
   function md(t) {
@@ -360,7 +377,7 @@
   const kindOf = m => m === "auto" ? "auto" : m.startsWith("nougenopen:") ? "bridge" : m.startsWith("prov:") ? "key" : "local";
   function modelPicker() { return S.models ? `<select id="mp" title="Model route">${S.models.map(m => `<option value="${esc(m)}" ${m === S.model ? "selected" : ""}>${esc(label(m))}${kindOf(m) === "bridge" ? " ($0, parallel)" : kindOf(m) === "local" ? " (local)" : ""}</option>`).join("")}</select>` : ""; }
   function wirePicker() { const p = $("mp"); if (p) p.onchange = e => { S.model = e.target.value;
-    chrome.storage.sync.set(kindOf(S.model) === "local" ? { model: S.model, localModel: S.model } : { model: S.model }); $("mdl").textContent = "· " + label(S.model); }; }
+    chrome.storage.sync.set(kindOf(S.model) === "local" ? { model: S.model, localModel: S.model } : { model: S.model }); $("mdl").textContent = label(S.model); }; }
 
   function drawLines() {
     const bd = $("bd"), q = (S.q || "").toLowerCase();
@@ -433,12 +450,24 @@
     bd.innerHTML = loader(`Mapping ${cs.length} topic chunks in parallel`, "Long video: each part is summarized on a free-fleet lane, then combined.", S.sT0);
     const sys = `You take grounded notes on one part of the YouTube video "${vtitle()}". Only facts the speaker states. Keep every useful [m:ss] timestamp.`;
     const prompts = cs.map((c, i) => `Part ${i + 1}/${cs.length} (${fmt(c.from)}-${fmt(c.to)}). Write 4-8 terse bullet notes, each ending with its [m:ss]. Then add one line starting with QUOTE: holding one short passage copied word for word from this part, in double quotes, followed by its [m:ss].\n\n${c.text}`);
-    const r = await new Promise(res => { const p = chrome.runtime.connect({ name: "map" }); const ka = setInterval(() => { try { p.postMessage({ ping: 1 }); } catch {} }, 15000);
-      p.onMessage.addListener(m => { clearInterval(ka); res(m); p.disconnect(); }); p.onDisconnect.addListener(() => { clearInterval(ka); res({ ok: false, error: "background stopped" }); }); p.postMessage({ prompts, system: sys }); });
+    const mapCall = ps => new Promise(res => { const p = chrome.runtime.connect({ name: "map" }); const ka = setInterval(() => { try { p.postMessage({ ping: 1 }); } catch {} }, 15000);
+      p.onMessage.addListener(m => { clearInterval(ka); res(m); p.disconnect(); }); p.onDisconnect.addListener(() => { clearInterval(ka); res({ ok: false, error: "background stopped" }); }); p.postMessage({ prompts: ps, system: sys }); });
+    const r = await mapCall(prompts);
     if (!r?.ok) throw new Error(r?.error || "map failed");
-    const ok = r.results.filter(x => x.ok).length;
-    S.mapInfo = `${ok}/${cs.length} chunks via ${[...new Set(r.results.filter(x => x.ok).map(x => x.provider))].join(", ")}`;
-    return r.results.map((x, i) => `### Part ${i + 1} (${fmt(cs[i].from)}-${fmt(cs[i].to)})\n${x.ok ? x.content : "(chunk failed: " + x.error + ")"}`).join("\n\n");
+    const results = r.results.slice(), good = x => x && x.ok && (x.content || "").trim();
+    // No part of the video may silently drop out. Failed chunks get a second try; any that
+    // still fail are handed to the final step as their own transcript text.
+    let bad = results.map((x, i) => good(x) ? -1 : i).filter(i => i >= 0);
+    if (bad.length) {
+      bd.innerHTML = loader(`Retrying ${bad.length} of ${cs.length} chunks`, "Some free-fleet lanes failed; trying them again.", S.sT0);
+      const r2 = await mapCall(bad.map(i => prompts[i]));
+      if (r2?.ok) bad.forEach((i, k) => { if (good(r2.results[k])) results[i] = r2.results[k]; });
+      bad = results.map((x, i) => good(x) ? -1 : i).filter(i => i >= 0);
+    }
+    const okN = cs.length - bad.length;
+    if (!okN) throw new Error("every chunk failed on the free fleet");
+    S.mapInfo = `${okN}/${cs.length} chunks summarized via ${[...new Set(results.filter(good).map(x => x.provider))].join(", ")}` + (bad.length ? `, ${bad.length} passed through as transcript` : "");
+    return results.map((x, i) => `### Part ${i + 1} (${fmt(cs[i].from)}-${fmt(cs[i].to)})\n${good(x) ? x.content : "(not summarized; transcript of this part follows)\n" + cs[i].text.slice(0, 5000)}`).join("\n\n");
   }
 
   // ---- Checker pass. A second look at the model's work, done by code so it cannot be talked

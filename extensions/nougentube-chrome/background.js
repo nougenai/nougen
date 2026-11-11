@@ -41,7 +41,7 @@ chrome.runtime.onMessage.addListener((msg, _s, reply) => {
   if (msg.type === "models") {
     cfg().then(async c => {
       const [ngo, local] = await Promise.all([bridgeUp(), localModels(c)]);
-      const keyed = ready(c), labels = { auto: "Auto · best available route" };
+      const keyed = ready(c), labels = { auto: "Auto: best available route" };
       keyed.forEach(p => labels["prov:" + p.id] = `${p.name.replace(/ \(.+\)/, "")} · ${c.prov[p.id].model}`);
       reply({ ok: true, models: ["auto", ...(ngo ? ["nougenopen:auto"] : []), ...keyed.map(p => "prov:" + p.id), ...local],
         labels, nougenopen: ngo, current: c.model, localModel: c.localModel, keyed: keyed.length, ollamaErr: local.length ? null : "Ollama is not running" });

@@ -33,6 +33,9 @@ Ideas adopted from open-source summarizers:
 - Map-reduce: bskrishna2006 (Apache-2.0).
 - Tube-Brief has no license, so nothing was copied from it.
 
+## Themes
+The panel and the settings page use the Mono Violet colorways from the NouGenDesigns package (`designs/mono-violet/tokens.css`): Mono Violet dark, Mono Violet light, Arcade and Hardcade. "Auto" (the default) picks dark or light to match YouTube. Change it with ◐ in the panel header or on the settings page.
+
 ## Model routes and your own keys
 Open ⚙ in the panel header for the settings page.
 - **Provider keys.** Claude (Anthropic), OpenAI, Google Gemini, DeepSeek, OpenRouter, NVIDIA build, or any OpenAI-compatible endpoint. Paste a key and press "Test key and load models": the key is checked against the provider and the model list comes from the provider itself, so no model name is guessed. Keys are stored in this browser only (`chrome.storage.local`) and sent only to that provider.

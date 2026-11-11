@@ -5,17 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NouGenTube settings</title>
 <style>
-  :root{--bg:#0f0f12;--card:#17171c;--ln:#2a2a33;--tx:#e9e9ee;--mu:#9a9aa8;--ac:#7c5cff;--ac2:#22d3ee;--ok:#34d399;--bad:#fbbf24}
-  @media (prefers-color-scheme:light){:root{--bg:#fff;--card:#f5f5f8;--ln:#e3e3ea;--tx:#141418;--mu:#5e5e6b}}
-  *{box-sizing:border-box} [hidden]{display:none!important} body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.55 system-ui,"Segoe UI",Roboto,sans-serif}
+  :root{--bg:#0b0911;--card:#171321;--raised:#211a30;--ln:#332b43;--lns:#7d7094;--tx:#f5f1ff;--mu:#a79cb9;--ac:#a47bff;--ac2:#d2bbff;--ok:#4cc38a;--warn:#e6aa3a;--bad:#ff8a8a;--ink:#0b0911;--focus:#d2bbff;--r:8px;--rp:12px;--ow:1px}
+  :root[data-theme=light]{--bg:#f8f6fc;--card:#ffffff;--raised:#f0ecf8;--ln:#ddd5ec;--lns:#7d7094;--tx:#211a2f;--mu:#5e5470;--ac:#6941c6;--ac2:#4b2e9c;--ok:#1b7f4e;--warn:#8a5a00;--bad:#b42318;--ink:#ffffff;--focus:#6941c6;--r:8px;--rp:12px;--ow:1px}
+  :root[data-theme=arcade]{--bg:#17102a;--card:#261a44;--raised:#33245a;--ln:#4a3777;--lns:#9a82cc;--tx:#fff3fe;--mu:#cbbbe3;--ac:#c47dff;--ac2:#ff7ac0;--ok:#5cf2b6;--warn:#ffd166;--bad:#ff7d98;--ink:#17102a;--focus:#ffe066;--r:12px;--rp:16px;--ow:1px}
+  :root[data-theme=hardcade]{--bg:#080711;--card:#151024;--raised:#1f1733;--ln:#3a2a5c;--lns:#8a6cc4;--tx:#f8f2ff;--mu:#b9acce;--ac:#b14cff;--ac2:#00e5ff;--ok:#b6ff3b;--warn:#ffb020;--bad:#ff5c78;--ink:#080711;--focus:#00e5ff;--r:0px;--rp:2px;--ow:2px}
+  :is(a,button,input,select):focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+  *{box-sizing:border-box} [hidden]{display:none!important} body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.55 "Geist",system-ui,"Segoe UI",Roboto,sans-serif}
   main{max-width:760px;margin:0 auto;padding:28px 16px 60px}
   h1{font-size:22px;margin:0 0 4px} h2{font-size:16px;margin:28px 0 8px} p{margin:6px 0;color:var(--mu)}
-  .card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px;margin:10px 0}
+  .card{background:var(--card);border:var(--ow) solid var(--ln);border-radius:var(--rp);padding:14px;margin:10px 0}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap} .row>*{min-width:0}
-  .name{font-weight:650;flex:1 1 160px} .st{font-size:13px;color:var(--mu)} .st.ok{color:var(--ok)} .st.bad{color:var(--bad)}
-  input,select,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--ln);border-radius:8px;padding:8px 10px}
+  .name{font-weight:650;flex:1 1 160px} .st{font-size:13px;color:var(--mu)} .st.ok{color:var(--ok)} .st.bad{color:var(--warn)}
+  input,select,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--ln);border-radius:var(--r);padding:8px 10px}
   input[type=password],input[type=text],input[type=url]{flex:1 1 220px} select{flex:1 1 200px}
-  button{cursor:pointer} button.go{background:linear-gradient(135deg,var(--ac),#5b8cff);color:#fff;border:0;font-weight:600}
+  button{cursor:pointer} button.go{background:var(--ac);color:var(--ink);border:0;font-weight:600}
   button:disabled{opacity:.6;cursor:default} a{color:var(--ac2)}
   .note{font-size:13px;color:var(--mu);margin-top:8px}
 </style>
@@ -24,6 +27,19 @@
 <main>
   <h1>NouGenTube settings</h1>
   <p>Add a key for any provider you use. Keys are saved only in this browser and sent only to that provider.</p>
+
+  <h2>Theme</h2>
+  <div class="card">
+    <div class="row">
+      <select id="theme">
+        <option value="auto">Auto: Mono Violet, light or dark to match YouTube</option>
+        <option value="dark">Mono Violet dark</option>
+        <option value="light">Mono Violet light</option>
+        <option value="arcade">Arcade</option>
+        <option value="hardcade">Hardcade</option>
+      </select>
+    </div>
+  </div>
 
   <h2>How "Auto" picks a route</h2>
   <div class="card">

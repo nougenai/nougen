@@ -5,7 +5,10 @@ let prov = {};
 
 async function init() {
   prov = (await chrome.storage.local.get("prov")).prov || {};
-  const sync = await chrome.storage.sync.get(["host", "autoOrder"]);
+  const sync = await chrome.storage.sync.get(["host", "autoOrder", "theme"]);
+  const paint = t => { document.documentElement.dataset.theme = t === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : t; };
+  $("theme").value = sync.theme || "auto"; paint($("theme").value);
+  $("theme").onchange = () => { chrome.storage.sync.set({ theme: $("theme").value }); paint($("theme").value); };
   $("order").value = sync.autoOrder || "free";
   $("order").onchange = () => chrome.storage.sync.set({ autoOrder: $("order").value });
   $("host").value = sync.host || "http://localhost:11434";
