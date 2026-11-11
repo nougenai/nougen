@@ -36,11 +36,11 @@ Ideas adopted from open-source summarizers:
 ## Morph
 The Morph tab reverses a video's intent: it asks what the video lets you build, and builds on what your vault already holds.
 1. **Intents.** The model names the video's buildable ideas as short search phrases.
-2. **Cross-reference.** The bridge looks each phrase up in NouGenShards (`POST /v1/nougen/recall`) and returns the matching shards. The video's own saved report is excluded.
-3. **Plan.** For the target you pick (best fit, code architecture, app, website, or skill/workflow) it writes: Intent of the video, What the vault already has, Morph plan, First build steps, Gaps. Shards are cited as `[id@dbN]`.
+2. **Cross-reference.** The bridge looks each phrase up in NouGenShards (`POST /v1/nougen/recall`) and returns the matching shards. The video's own saved report is excluded. Results are over-fetched and split into two groups, vault knowledge (up to 10) and other saved videos (up to 4, one per video), so fresh video reports cannot crowd out older material.
+3. **Plan.** For the target you pick (best fit, code architecture, app, website, skill/workflow, or "Something else" with your own words) it writes: Intent of the video, What the vault already has, Morph plan, First build steps, Gaps. Shards are cited as `[id@dbN]`.
 4. **Check.** Code confirms every cited shard is one the vault returned and every timestamp is inside the video.
 
-"Shard it" saves the plan with the tag `tube-morph:<video id>`; a later morph of the same video says it was morphed before. Morph needs the bridge running, because that is how the extension reads the vault.
+"Shard it" saves the plan with the tag `tube-morph:<video id>`; a later morph of the same video says it was morphed before. "Copy build prompt" copies the plan as a prompt for a coding agent. If the bridge is not running the vault cannot be read: Morph still writes a plan from the video alone and marks it "Vault not read".
 
 ## Themes
 The panel and the settings page use the Mono Violet colorways from the NouGenDesigns package (`designs/mono-violet/tokens.css`): Mono Violet dark, Mono Violet light, Arcade and Hardcade. "Auto" (the default) picks dark or light to match YouTube. Change it with ◐ in the panel header or on the settings page.
