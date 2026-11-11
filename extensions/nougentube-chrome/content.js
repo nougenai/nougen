@@ -247,7 +247,7 @@
     root = host.attachShadow({ mode: "open" });
     root.innerHTML = `<style>${CSS}</style><div class="p">
       <div class="hd"><div class="lg">N</div><div class="ti">NouGenTube<small id="mdl"></small></div>
-        <button class="chip" id="hs" title="Save this video to NouGenShards: the full transcript, plus the summary if you have made one">Shard</button><button class="ib" id="key" title="NVIDIA API key">⚙</button><button class="ib" id="cp" title="Copy transcript">⧉</button><button class="ib" id="dl" title="Export">⤓</button><div class="menu" id="menu" hidden><button data-x="md">Markdown (everything)</button><button data-x="txt">Transcript .txt</button><button data-x="srt">Subtitles .srt</button></div>
+        <button class="chip" id="hs" title="Save this video to NouGenShards: the full transcript, plus the summary if you have made one">Shard</button><button class="ib" id="key" title="Settings: provider keys and routes">⚙</button><button class="ib" id="cp" title="Copy transcript">⧉</button><button class="ib" id="dl" title="Export">⤓</button><div class="menu" id="menu" hidden><button data-x="md">Markdown (everything)</button><button data-x="txt">Transcript .txt</button><button data-x="srt">Subtitles .srt</button></div>
         <button class="ib" id="col" title="Collapse">▾</button></div>
       <div class="note" id="note" hidden></div><div id="wrap"><div class="tabs"><button data-t="transcript">Transcript</button><button data-t="summary">Summary</button><button data-t="chat">Chat</button><button data-t="highlights">Highlights</button></div>
       <div class="tb" id="tb"></div><div class="bd" id="bd"></div><div id="ft"></div></div></div>`;
@@ -257,10 +257,9 @@
     root.getElementById("dl").onclick = e => { e.stopPropagation(); const m = root.getElementById("menu"); m.hidden = !m.hidden; };
     root.getElementById("menu").onclick = e => { const x = e.target.dataset.x; if (x) { root.getElementById("menu").hidden = true; download(x); } };
     root.getElementById("hs").onclick = () => shardIt("hs");
-    root.getElementById("key").onclick = () => { const k = prompt("NVIDIA API key (nvapi-…) from build.nvidia.com — stored only in this browser. Leave empty to remove."); if (k === null) return;
-      if (k.trim()) chrome.storage.local.set({ nvKey: k.trim() }); else chrome.storage.local.remove("nvKey"); S.nvKey = !!k.trim(); render(); };
+    root.getElementById("key").onclick = () => chrome.runtime.sendMessage({ type: "openOptions" });
     root.addEventListener("click", e => { const a = e.target.closest("[data-seek]"); if (a) { e.stopPropagation(); seek(+a.dataset.seek); } });
-    chrome.runtime.sendMessage({ type: "models" }, r => { if (r?.ok) { S.models = r.models; S.model = r.current; S.nvKey = r.nvKey; S.ollamaErr = r.ollamaErr; } root.getElementById("mdl").textContent = "· " + label(S.model || ""); render(); });
+    chrome.runtime.sendMessage({ type: "models" }, r => { if (r?.ok) { S.models = r.models; S.model = r.current; S.labels = r.labels || {}; S.bridge = r.nougenopen; S.ollamaErr = r.ollamaErr; } root.getElementById("mdl").textContent = "· " + label(S.model || ""); render(); });
     return true;
   }
   const $ = id => root.getElementById(id);
@@ -357,9 +356,11 @@
       bd.querySelectorAll("[data-del]").forEach(b => b.onclick = e => { e.stopPropagation(); delete S.hl[b.dataset.del]; saveHl(); render(); });
     }
   }
-  function label(m) { return m === "nougenopen:auto" ? "NouGenOpen · free fleet" : m.startsWith("nvidia:") ? "NVIDIA · " + m.split("/").pop() : m; }
-  function modelPicker() { return S.models ? `<select id="mp" title="Model">${S.models.map(m => `<option value="${esc(m)}" ${m === S.model ? "selected" : ""}>${esc(label(m))}${m.startsWith("nougenopen:") ? " ($0, parallel)" : m.startsWith("nvidia:") ? (S.nvKey ? "" : " (needs key)") : " (local)"}</option>`).join("")}</select>` : ""; }
-  function wirePicker() { const p = $("mp"); if (p) p.onchange = e => { S.model = e.target.value; chrome.storage.sync.set({ model: S.model }); $("mdl").textContent = "· " + label(S.model); }; }
+  function label(m) { return (S.labels && S.labels[m]) || (m === "nougenopen:auto" ? "NouGenOpen · free fleet" : m); }
+  const kindOf = m => m === "auto" ? "auto" : m.startsWith("nougenopen:") ? "bridge" : m.startsWith("prov:") ? "key" : "local";
+  function modelPicker() { return S.models ? `<select id="mp" title="Model route">${S.models.map(m => `<option value="${esc(m)}" ${m === S.model ? "selected" : ""}>${esc(label(m))}${kindOf(m) === "bridge" ? " ($0, parallel)" : kindOf(m) === "local" ? " (local)" : ""}</option>`).join("")}</select>` : ""; }
+  function wirePicker() { const p = $("mp"); if (p) p.onchange = e => { S.model = e.target.value;
+    chrome.storage.sync.set(kindOf(S.model) === "local" ? { model: S.model, localModel: S.model } : { model: S.model }); $("mdl").textContent = "· " + label(S.model); }; }
 
   function drawLines() {
     const bd = $("bd"), q = (S.q || "").toLowerCase();
@@ -407,7 +408,7 @@
     // Chrome stops an idle background page after ~30s even mid-request; a message every 15s keeps it up.
     const ka = setInterval(() => { try { port.postMessage({ ping: 1 }); } catch {} }, 15000);
     const end = (e, m) => { if (fin) return; fin = true; clearInterval(ka); onDone(e, m); };
-    port.onMessage.addListener(m => { if (m.delta) onDelta(m.delta); if (m.error) end("\n\n⚠ " + m.error); if (m.done) end("", m); });
+    port.onMessage.addListener(m => { if (m.stage && S.onStage) S.onStage(m.stage); if (m.reset && S.onReset) S.onReset(); if (m.delta) onDelta(m.delta); if (m.error) end("\n\n⚠ " + m.error); if (m.done) end("", m); });
     port.onDisconnect.addListener(() => end("\n\n⚠ The extension's background page stopped before the answer arrived. Press Regenerate."));
     port.postMessage({ messages });
   }
@@ -483,9 +484,15 @@
     if (!S.lines.length) { S.shardMsg = "Nothing to save yet: the transcript has not loaded."; return note(); }
     const label = b.textContent; b.dataset.busy = "1"; b.innerHTML = '<span class="spin"></span> Saving';
     const has = !!S.summary.trim();
-    const r = await new Promise(res => chrome.runtime.sendMessage({ type: "shard", doc: {
+    const doc = {
       title: `${vtitle()} — NouGenTube ${has ? (STYN[S.sty] || "summary") : "transcript"}`.slice(0, 190), content: has ? reportDoc() : copyText(),
-      tags: ["nougentube", "tube-report:" + S.vid, has ? (S.sty || "summary") : "transcript"], source_uri: "https://www.youtube.com/watch?v=" + S.vid } }, res));
+      tags: ["nougentube", "tube-report:" + S.vid, has ? (S.sty || "summary") : "transcript"], source_uri: "https://www.youtube.com/watch?v=" + S.vid };
+    // Saving can take a while; use a kept-alive connection and retry once. A repeat is safe:
+    // the vault recognises identical content and does not store it twice.
+    const once = () => new Promise(res => { const p = chrome.runtime.connect({ name: "shard" }); const ka = setInterval(() => { try { p.postMessage({ ping: 1 }); } catch {} }, 15000);
+      const fin = v => { clearInterval(ka); res(v); try { p.disconnect(); } catch {} };
+      p.onMessage.addListener(fin); p.onDisconnect.addListener(() => fin(null)); p.postMessage({ doc }); });
+    let r = await once(); if (!r) r = await once();
     S.shardMsg = r?.ok ? `Saved to NouGenShards: ${r.parts.length} shard${r.parts.length === 1 ? "" : "s"} (${r.parts.map(p => p.shard_id != null ? `${p.shard_id}@db${p.db_index}` : (p.captured ? "new" : "already stored")).join(", ")}).`
       : `Could not save to NouGenShards: ${r?.error || "the local bridge did not answer"}`;
     delete b.dataset.busy; b.textContent = label; save(); render(); note();
@@ -496,20 +503,25 @@
     if (S.sty === "custom" && !(S.custom || "").trim()) return $("cp2")?.focus();
     const task = (S.sty === "custom" ? S.custom : STY[S.sty]) + " " + (S.sty === "mindmap" || S.sty === "chapters" || S.sty === "intel" ? "" : LEN[S.len]) + (S.lng !== "Auto" ? ` Write the answer in ${S.lng}.` : ""); render(); const bd = $("bd"), b = $("gen"); b.disabled = true; b.innerHTML = '<span class="spin"></span>Working'; S.sT0 = Date.now();
     const m = S.model || "";
-    bd.innerHTML = m.startsWith("nougenopen:") ? loader("Asking the NouGenOpen free fleet", "", S.sT0)
-      : m.startsWith("nvidia:") ? loader("Waiting for NVIDIA", "The free endpoint can queue; it gives up after 90s.", S.sT0)
+    const k = kindOf(m);
+    bd.innerHTML = k === "auto" ? loader("Finding the best available route", "Tries each route in order and moves on if one fails.", S.sT0)
+      : k === "bridge" ? loader("Asking the NouGenOpen free fleet", "", S.sT0)
+      : k === "key" ? loader("Asking " + label(m), "", S.sT0)
       : loader(`Running locally on ${m}`, "The first request after a while also loads the model into memory.", S.sT0);
+    S.onStage = t => { if (!S.summary && S.tab === "summary") bd.innerHTML = loader(t, "", S.sT0); };
+    S.onReset = () => { S.summary = ""; };
     let sys = SYS(); S.mapInfo = "";
-    if (S.model === "nougenopen:auto" && fullLen() > 14000) {
+    if ((S.model === "nougenopen:auto" || (S.model === "auto" && S.bridge)) && fullLen() > 14000) {
       try { const notes = await mapNotes(bd);
         bd.innerHTML = loader("Combining the notes into your summary", S.mapInfo, S.sT0);
         sys = `You are NouGenTube, writing about the YouTube video "${vtitle()}". Below are grounded, timestamped notes covering the whole video in order. Use only these notes; keep [m:ss] timestamps. When you quote, use only passages that appear inside double quotes on the QUOTE: lines, exactly as written. Markdown only.\n\nNOTES:\n${notes}`;
-      } catch (e) { S.summary = "⚠ " + e.message; b.disabled = false; b.textContent = "Regenerate"; return render(); } }
+      } catch (e) { if (S.model === "auto") { sys = SYS(); S.mapInfo = ""; bd.innerHTML = loader("Finding the best available route", "", S.sT0); } else { S.summary = "⚠ " + e.message; b.disabled = false; b.textContent = "Regenerate"; return render(); } } }
     stream([{ role: "system", content: sys }, { role: "user", content: task }], d => { S.summary += d; if (S.tab === "summary") bd.innerHTML = show(S.summary) + WRITING; },
-      (e, fin) => { S.summary += e; if (fin) S.summary += `\n\n— ${fin.model}, ${fin.tokens} tokens, ${Math.round((Date.now() - S.sT0) / 1000)}s, ${fin.where}${S.mapInfo ? " · map: " + S.mapInfo : ""}`; save(); render(); });
+      (e, fin) => { S.summary += e; if (fin) S.summary += `\n\n— ${fin.model}, ${fin.tokens} tokens, ${Math.round((Date.now() - S.sT0) / 1000)}s, ${fin.where}${S.mapInfo ? " · map: " + S.mapInfo : ""}${fin.failed && fin.failed.length ? ` · after ${fin.failed.length} failed route${fin.failed.length === 1 ? "" : "s"}` : ""}`; save(); render(); });
   }
   function ask(q) {
     S.chat.push({ role: "user", content: q }, { role: "assistant", content: "" }); render(); const a = S.chat[S.chat.length - 1];
+    S.onStage = null; S.onReset = () => { a.content = ""; };
     stream([{ role: "system", content: SYS() + (S.lng && S.lng !== "Auto" ? `\nAlways answer in ${S.lng}.` : "") }, ...S.chat.slice(0, -1).slice(-10)], d => { a.content += d; if (S.tab === "chat") { const ms = $("bd").querySelectorAll(".msg"); ms[ms.length - 1].innerHTML = md(a.content); $("bd").scrollTop = 1e9; } },
       e => { a.content += e; save(); render(); });
   }

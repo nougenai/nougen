@@ -33,6 +33,12 @@ Ideas adopted from open-source summarizers:
 - Map-reduce: bskrishna2006 (Apache-2.0).
 - Tube-Brief has no license, so nothing was copied from it.
 
+## Model routes and your own keys
+Open ⚙ in the panel header for the settings page.
+- **Provider keys.** Claude (Anthropic), OpenAI, Google Gemini, DeepSeek, OpenRouter, NVIDIA build, or any OpenAI-compatible endpoint. Paste a key and press "Test key and load models": the key is checked against the provider and the model list comes from the provider itself, so no model name is guessed. Keys are stored in this browser only (`chrome.storage.local`) and sent only to that provider.
+- **Auto** (the default route) tries each available route in order and moves on when one fails or stays silent: the NouGenOpen free fleet, local Ollama, then your keyed providers. The order can be flipped to "my keys first". The summary's last line names the route that answered and how many failed before it.
+- **Claude** is called through the Messages API directly with your key. No sampling parameters are sent (current Claude models reject them), and the server-side refusal fallback is requested on models that support it.
+
 ## Intelligence report, checker and shards
 - **Intelligence report** (the default summary style) follows the Media Intelligence Architect format: Executive Summary, Key Insights & Technical Milestones, Strategic Action Items, Quality Control / Fact-Check, Notable Quotes.
 - **Full Transcript Archive.** "Copy report + transcript" puts the report first and the complete transcript second. The extension builds the archive from the transcript itself, so it is always complete and word for word, and the model spends no tokens repeating it.

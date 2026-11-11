@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "NouGenTube",
-  "version": "0.4.0",
-  "description": "YouTube transcript, local-AI summary, chat and highlights. Runs on your own Ollama — $0, private.",
+  "version": "0.5.0",
+  "description": "YouTube transcript, summary, chat and shards. Runs on your own models: local Ollama, the NouGenOpen free fleet, or your own provider keys.",
   "permissions": [
     "storage",
     "declarativeNetRequest"
@@ -12,6 +12,11 @@
     "http://localhost:11434/*",
     "http://127.0.0.1:11434/*",
     "http://127.0.0.1:8765/*",
+    "https://api.anthropic.com/*",
+    "https://api.openai.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.deepseek.com/*",
+    "https://openrouter.ai/*",
     "https://integrate.api.nvidia.com/*"
   ],
   "background": {
@@ -46,5 +51,10 @@
         "path": "rules.json"
       }
     ]
-  }
+  },
+  "options_page": "options.html",
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
 }

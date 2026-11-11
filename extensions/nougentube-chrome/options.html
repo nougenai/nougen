@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NouGenTube settings</title>
+<style>
+  :root{--bg:#0f0f12;--card:#17171c;--ln:#2a2a33;--tx:#e9e9ee;--mu:#9a9aa8;--ac:#7c5cff;--ac2:#22d3ee;--ok:#34d399;--bad:#fbbf24}
+  @media (prefers-color-scheme:light){:root{--bg:#fff;--card:#f5f5f8;--ln:#e3e3ea;--tx:#141418;--mu:#5e5e6b}}
+  *{box-sizing:border-box} [hidden]{display:none!important} body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.55 system-ui,"Segoe UI",Roboto,sans-serif}
+  main{max-width:760px;margin:0 auto;padding:28px 16px 60px}
+  h1{font-size:22px;margin:0 0 4px} h2{font-size:16px;margin:28px 0 8px} p{margin:6px 0;color:var(--mu)}
+  .card{background:var(--card);border:1px solid var(--ln);border-radius:12px;padding:14px;margin:10px 0}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap} .row>*{min-width:0}
+  .name{font-weight:650;flex:1 1 160px} .st{font-size:13px;color:var(--mu)} .st.ok{color:var(--ok)} .st.bad{color:var(--bad)}
+  input,select,button{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--ln);border-radius:8px;padding:8px 10px}
+  input[type=password],input[type=text],input[type=url]{flex:1 1 220px} select{flex:1 1 200px}
+  button{cursor:pointer} button.go{background:linear-gradient(135deg,var(--ac),#5b8cff);color:#fff;border:0;font-weight:600}
+  button:disabled{opacity:.6;cursor:default} a{color:var(--ac2)}
+  .note{font-size:13px;color:var(--mu);margin-top:8px}
+</style>
+</head>
+<body>
+<main>
+  <h1>NouGenTube settings</h1>
+  <p>Add a key for any provider you use. Keys are saved only in this browser and sent only to that provider.</p>
+
+  <h2>How "Auto" picks a route</h2>
+  <div class="card">
+    <div class="row">
+      <select id="order">
+        <option value="free">Free first: NouGenOpen fleet, local Ollama, then my keys</option>
+        <option value="keys">My keys first, then NouGenOpen fleet and local Ollama</option>
+      </select>
+    </div>
+    <div class="note">Auto tries each route in order and moves on when one fails or stays silent. The summary's last line says which route answered.</div>
+  </div>
+
+  <h2>Local Ollama</h2>
+  <div class="card">
+    <div class="row"><span class="name">Address</span><input id="host" type="url" placeholder="http://localhost:11434"><button id="saveHost">Save</button><span class="st" id="hostSt"></span></div>
+  </div>
+
+  <h2>Provider keys</h2>
+  <div id="provs"></div>
+</main>
+<script src="providers.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
