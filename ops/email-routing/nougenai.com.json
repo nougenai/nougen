@@ -1,0 +1,5 @@
+{
+  "domain": "nougenai.com",
+  "addresses": ["contact", "support", "hello", "billing", "security", "privacy", "legal"],
+  "catch_all": "drop"
+}
