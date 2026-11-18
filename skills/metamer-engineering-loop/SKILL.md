@@ -9,6 +9,16 @@ A 7-stage pipeline for systems architecture and problem solving. It is built on 
 
 Companion to the `valerion` skill. Valerion absorbs a whole system into NouGen, while this loop designs one target. Both "Valerion" and "Metamers" are canonical names; never flag either as drift.
 
+## Executable runtime: Metamer Engine v3
+
+v3 makes the loop executable. The reference runtime lives in `src/metamer/core.py` of the nougenai/nougen repo, and the architecture is in `references/metamer-engine-v3.md`. What it provides:
+- a persistent seven-stage state machine;
+- a transactional SQLite event log with a hash chain;
+- restart recovery;
+- fail-closed privileged actions.
+
+Governing law: every iteration must end in a verified improvement, a reusable negative finding, or a documented blocker. Anything else is waste. The system that proposes a change is never the sole judge of it; promotion needs an independent verifier.
+
 ## Governing version: Metamer Engine v2
 
 v2 governs. Where an older section below disagrees with it, follow v2. The full v2 text is in `references/metamer-engine-v2.md`; read it before a large or consequential run. The operating rules:
